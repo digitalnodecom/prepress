@@ -17,7 +17,8 @@ const keepHead = head
 // Move the title first so the host finds it in the first 8 KB.
 const title = keepHead.match(/<title>[\s\S]*?<\/title>/i)?.[0] ?? '<title>Blockwright</title>';
 const rest = keepHead.replace(title, '');
-const out = `${title}\n${rest}\n${body}`;
+// Literal U+FFFD characters (from bundled libraries) are escaped; they only occur in JS strings/regexes.
+const out = `${title}\n${rest}\n${body}`.replace(/\uFFFD/g, '\\uFFFD');
 mkdirSync('dist', { recursive: true });
 writeFileSync('dist/blockwright.html', out);
 console.log(`dist/blockwright.html ${(out.length / 1024 / 1024).toFixed(2)} MB`);
