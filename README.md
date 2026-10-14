@@ -1,5 +1,7 @@
 # Blockwright
 
+> Picking this up? Read **[HANDOFF.md](HANDOFF.md)** first.
+
 An AI site builder whose native format is **WordPress block markup**. Every page is stored as Gutenberg `post_content`, styles live in a real `theme.json`, and "Export to WordPress" produces a block theme + WXR import file that open in WordPress 7.0 with zero invalid blocks.
 
 ## Run it
@@ -58,4 +60,4 @@ src/ui/*                  React app
 tests/*                   vitest (jsdom)
 ```
 
-See `PLAN.md` for the roadmap and `CLAUDE.md` for working conventions.
+**Continuing this project (human or AI agent)?** Start with `HANDOFF.md`, then `CLAUDE.md` / `AGENTS.md` (rules) and `PLAN.md` (roadmap). Screenshots are in `docs/screenshots/`.

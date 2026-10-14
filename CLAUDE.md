@@ -1,5 +1,7 @@
 # CLAUDE.md — working on Blockwright
 
+> New to this project? Read `HANDOFF.md` first: what it is, why it's built this way, what's verified, and what to do next.
+
 ## Non-negotiables
 
 1. **Page content is WordPress block markup.** `Page.content`, `Site.header` and `Site.footer` are serialized Gutenberg markup. Never store HTML that didn't come from `serialize()`.
