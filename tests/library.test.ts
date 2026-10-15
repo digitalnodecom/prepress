@@ -196,7 +196,8 @@ describe('library API and Prepress', () => {
     expect(home.headers.get('content-security-policy')).toContain("default-src 'none'");
     const homeHtml = await home.text();
     for (const s of ['Web version', 'Desktop app', 'Library', 'your-name.prepress.test']) expect(homeHtml).toContain(s);
-    for (const path of ['/library', `/library/${pub.body.id}`]) {
+    expect(await (await fetch(`${apiBase}/library`)).text()).toMatch(/class="on" href="\/library">Templates/);
+    for (const path of ['/library?type=all', '/library?type=pattern', `/library/${pub.body.id}`]) {
       const html = await (await fetch(apiBase + path)).text();
       expect(html).not.toContain('<script>alert(1)');
       expect(html).not.toContain('<img src=x');

@@ -184,7 +184,7 @@ export interface LibraryList {
   total: number;
   items: LibraryMeta[];
 }
-export const libraryList = (q: { type?: string; q?: string; sort?: string }) =>
+export const libraryList = (q: { type?: string; q?: string; sort?: string; official?: '1' }) =>
   api<LibraryList>(`/api/library/items?${new URLSearchParams(Object.entries(q).filter(([, v]) => v) as [string, string][])}`);
 export const libraryMine = () => api<LibraryList>('/api/library/mine');
 export const libraryGet = (id: string, forImport = false) => api<LibraryMeta & { payload: any }>(`/api/library/items/${encodeURIComponent(id)}${forImport ? '?import=1' : ''}`);

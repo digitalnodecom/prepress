@@ -11,7 +11,7 @@ import {
 import { validateMarkup } from '../lib/wp/markup';
 import { pageUrl, renderPage } from '../lib/wp/render';
 import { exportSite } from '../lib/wp/export';
-import { connectBackend, loadDraft, publish, saveDraft, siteHash, subscribeChanges, type Backend, type Draft } from '../lib/backend';
+import { connectBackend, libraryGet, loadDraft, publish, saveDraft, siteHash, subscribeChanges, type Backend, type Draft } from '../lib/backend';
 import { registerCustomBlocks } from '../lib/wp/customBlocks';
 import { Preview, type Device } from './Preview';
 import { DesignPanel } from './DesignPanel';
@@ -306,6 +306,33 @@ export function App() {
     setPatternId(null);
     setSelected(null);
     if (!placeholder) flash(id === 'blank' ? `Started ${s.name}` : `Started ${s.name} from the ${starterById(id)?.title} template`);
+  }
+
+  /** New site from an official library template: import it, then give it the name and "about" typed in the dialog. */
+  async function startFromLibrary(id: string, title: string, name: string, about: string) {
+    try {
+      const item = await libraryGet(id, true);
+      const cur = siteRef.current;
+      const r = importLibraryItem(cur ?? buildStarter('blank').site, item);
+      const s = name ? rebuildParts({ ...r.site, name }) : r.site;
+      const b = about ? `${about}\n\nStarted from the “${title}” template. Its sample content describes ${r.site.name}; rewrite it for this site, keeping the style.${r.brief ? `\n\nTemplate brief: ${r.brief}` : ''}` : (r.brief ?? '');
+      if (cur && !isSample) {
+        past.current.push(cur);
+        future.current = [];
+      }
+      setDialog(false);
+      sampleBase.current = null;
+      setSiteState(s);
+      setBrief(b);
+      setIsSample(false);
+      setPageId(s.pages[0].id);
+      setPartTarget(null);
+      setPatternId(null);
+      setSelected(null);
+      flash(`Started ${s.name} from the ${title} template`);
+    } catch (e: any) {
+      setError(`Couldn’t load the template: ${String(e?.message ?? e)}`);
+    }
   }
 
   const onAddPage = (title: string) => {
@@ -697,6 +724,7 @@ export function App() {
             replaces={!isSample}
             onClose={() => setDialog(false)}
             onStarter={(id, name, about) => startFrom(id, name, about)}
+            onLibraryTemplate={(id, title, name, about) => void startFromLibrary(id, title, name, about)}
           />
         )}
         {libraryOpen && (

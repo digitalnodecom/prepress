@@ -4,6 +4,12 @@ This file is for the next agent or developer picking up this project. It explain
 
 Last updated: 2026-10-14 · Version: v0.3 · Target: WordPress 7.0
 
+## v0.12 — official templates in New site; library opens on Templates
+
+- New site dialog: a "By Prepress" row (official library templates, live previews) above the built-in starters, fetched via `/api/library/items?type=template&official=1`; hidden when offline. Choosing one imports it (`startFromLibrary` in App.tsx), applies the typed site name, and puts the "about" text first in the brief, followed by the template's brief.
+- `official=1` passes through the local library proxy; MCP `library_search` takes `official: true`.
+- prepress.digitalno.de/library opens on Templates; "All" is `?type=all` (a search or the By Prepress filter still shows all types).
+
 ## v0.11 — library set #3: Night Garden (first dark style)
 
 - `library-sets/garden/`: night green `#0e1411`, moonlight cream, lantern amber (≈8:1, used as text and as a button with dark text); Cormorant Garamond (new FONTS entry) / DM Sans / DM Mono; round radius; `color-scheme: dark`; grain only on dark-backgrounded sections.

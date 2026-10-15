@@ -516,10 +516,10 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
 
     tool(
       'library_search',
-      'Search the Prepress library: templates (whole sites), patterns (sections), blocks (custom block types) and styles (design + theme.json) shared by Prepress users. Returns ids to use with library_import, and a preview link for each.',
-      { type: z.enum(['template', 'pattern', 'block', 'style']).optional(), query: z.string().optional(), sort: z.enum(['recent', 'popular']).optional() },
-      async ({ type, query, sort }) => {
-        const r = await lib().search({ type, q: query, sort, limit: 30 });
+      'Search the Prepress library: templates (whole sites), patterns (sections), blocks (custom block types) and styles (design + theme.json) shared by Prepress users. official=true lists only the sets made by Prepress (a style, its blocks, patterns and a full-site template built from them). Returns ids to use with library_import, and a preview link for each.',
+      { type: z.enum(['template', 'pattern', 'block', 'style']).optional(), query: z.string().optional(), sort: z.enum(['recent', 'popular']).optional(), official: z.boolean().optional() },
+      async ({ type, query, sort, official }) => {
+        const r = await lib().search({ type, q: query, sort, limit: 30, ...(official ? { official: '1' } : {}) });
         return { total: r.total, items: r.items.map((i: any) => ({ id: i.id, type: i.type, title: i.title, description: i.description, tags: i.tags, imports: i.imports, ...(i.official ? { official: true } : {}), page: lib().pageUrl(i.id) })) };
       },
       true,

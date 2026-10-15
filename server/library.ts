@@ -27,7 +27,7 @@ export function createLibraryClient(opts: { dataDir: string; base?: string; fetc
 
   return {
     base,
-    search(q: { type?: string; q?: string; limit?: number; offset?: number; sort?: string }) {
+    search(q: { type?: string; q?: string; limit?: number; offset?: number; sort?: string; official?: string }) {
       const qs = new URLSearchParams(Object.entries(q).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)]));
       return call(`/items?${qs}`);
     },

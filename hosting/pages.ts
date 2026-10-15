@@ -82,11 +82,13 @@ const badge = (on?: boolean) => (on ? `<span class="badge" title="Published by P
 const top = `<div class="top"><a href="/">${LOGO}<span>Prepress</span></a><span class="meta">/ <a href="/library">Library</a></span></div>`;
 
 export function libraryPage(lib: Library, q: URLSearchParams): string {
-  const type = q.get('type') ?? '';
   const text = q.get('q') ?? '';
   const official = q.get('official') === '1';
+  // Templates are the default view; "All" is ?type=all.
+  const raw = q.get('type') ?? (official || text ? 'all' : 'template');
+  const type = raw === 'all' ? '' : raw;
   const { items, total } = lib.list(new URLSearchParams({ type, q: text, limit: '60', sort: q.get('sort') ?? '', official: official ? '1' : '' }));
-  const link = (t: string, label: string) => `<a class="${type === t && !official ? 'on' : ''}" href="/library${t ? `?type=${t}` : ''}">${label}</a>`;
+  const link = (t: string, label: string) => `<a class="${type === t && !official ? 'on' : ''}" href="/library${t === 'template' ? '' : `?type=${t || 'all'}`}">${label}</a>`;
   const cards = items
     .map(
       (m) =>

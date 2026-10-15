@@ -421,7 +421,7 @@ export function createHandler(opts: ServerOptions) {
       try {
         if (route === 'GET /api/library/items') {
           const p = url.searchParams;
-          return json(res, 200, { base: library.base, ...(await library.search({ type: p.get('type') ?? undefined, q: p.get('q') ?? undefined, sort: p.get('sort') ?? undefined, offset: Number(p.get('offset') ?? 0) || undefined })) });
+          return json(res, 200, { base: library.base, ...(await library.search({ type: p.get('type') ?? undefined, q: p.get('q') ?? undefined, sort: p.get('sort') ?? undefined, official: p.get('official') === '1' ? '1' : undefined, offset: Number(p.get('offset') ?? 0) || undefined })) });
         }
         if (route === 'GET /api/library/mine') return json(res, 200, { base: library.base, ...(await library.mine()) });
         const item = url.pathname.match(/^\/api\/library\/items\/([^/]+)(\/delete)?$/);
