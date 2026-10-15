@@ -125,8 +125,9 @@ export type DeployTargetView = DeployTarget & { type: 'folder' | 'sftp' | 'ftp' 
 const post = (body: unknown): RequestInit => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
 /** Publish the saved draft: the server renders every page, writes the static site and deploys it to the auto targets. */
-export async function publish(): Promise<{ publishedAt: string; deploys: DeployResult[] }> {
-  return api('/api/publish', post({}));
+/** `targets`: ids to upload to (default: the auto targets); [] = render only. */
+export async function publish(targets?: string[]): Promise<{ publishedAt: string; deploys: DeployResult[] }> {
+  return api('/api/publish', post(targets ? { targets } : {}));
 }
 
 export const loadDeploy = () => api<{ targets: DeployTargetView[]; outDir: string; publishedAt: string | null }>('/api/deploy');

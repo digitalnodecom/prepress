@@ -1,60 +1,26 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { Site } from '../lib/types';
 import { HOME_SLUG } from '../lib/wp/templates';
 import { pageUrl } from '../lib/wp/render';
 import { blockUsage } from '../lib/site';
-import { McpPanel } from './McpPanel';
-import { DeployPanel } from './DeployPanel';
 
 interface Props {
   site: Site;
-  brief: string;
   busy: string | null;
-  validation: { blocks: number; invalid: number; byName: Record<string, number> } | null;
-  onRename(name: string, tagline: string): void;
   onAddPage(title: string): void;
-  onBrief(brief: string): void;
   onRemovePage(id: string): void;
-  onImport(data: unknown): void;
-  onLoadSample(): void;
-  serverMode?: boolean;
-  /** Something has been published (deploy needs it). */
-  published?: boolean;
   onEditPattern?(id: number): void;
   onDeletePattern?(id: number): void;
   onDeleteBlock?(name: string): void;
 }
 
+/** Sidebar → Pages: the site's pages, its own block types and patterns. Settings (gear) holds the rest. */
 export function SitePanel(p: Props) {
-  const [name, setName] = useState(p.site.name);
-  const [tagline, setTagline] = useState(p.site.tagline);
   const [newTitle, setNewTitle] = useState('');
   const [confirm, setConfirm] = useState<string | null>(null);
 
-  useEffect(() => {
-    setName(p.site.name);
-    setTagline(p.site.tagline);
-  }, [p.site.name, p.site.tagline]);
-
-  const commit = () => {
-    if (name.trim() && (name !== p.site.name || tagline !== p.site.tagline)) p.onRename(name.trim(), tagline.trim());
-  };
-
-  const byName = Object.entries(p.validation?.byName ?? {}).sort((a, b) => b[1] - a[1]);
-
   return (
     <>
-      <div className="field">
-        <label htmlFor="site-name">Site title</label>
-        <input id="site-name" className="input" value={name} onChange={(e) => setName(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && commit()} />
-      </div>
-      <div className="field">
-        <label htmlFor="site-tagline">Tagline</label>
-        <input id="site-tagline" className="input" value={tagline} onChange={(e) => setTagline(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && commit()} />
-      </div>
-      <p className="hint">Rendered by the dynamic <span className="mono">core/site-title</span> and <span className="mono">core/site-tagline</span> blocks, so they follow your WordPress settings after export.</p>
-
-      <hr className="sep" />
       <span className="eyebrow">Pages</span>
       <div className="pages-list">
         {p.site.pages.map((pg) => (
@@ -133,59 +99,6 @@ export function SitePanel(p: Props) {
         <p className="hint">No patterns yet. Patterns are reusable sections; synced ones update everywhere they're used.</p>
       )}
 
-      {p.serverMode && (
-        <>
-          <hr className="sep" />
-          <DeployPanel published={!!p.published} />
-          <hr className="sep" />
-          <McpPanel />
-        </>
-      )}
-
-      <hr className="sep" />
-      <span className="eyebrow">Blocks used</span>
-      <div className="stats">
-        {byName.map(([n, c]) => (
-          <span key={n} className="pill neutral">{n.replace('core/', '')} ×{c}</span>
-        ))}
-      </div>
-      <p className="hint">
-        {p.validation?.invalid
-          ? `${p.validation.invalid} blocks fail WordPress validation.`
-          : `All ${p.validation?.blocks ?? 0} blocks pass the same validator the WordPress editor runs on load.`}
-      </p>
-
-      <hr className="sep" />
-      <span className="eyebrow">Project</span>
-      <div className="row">
-        <label className="btn small" htmlFor="import-site" style={{ cursor: 'pointer' }}>
-          Open site.json…
-        </label>
-        <input
-          id="import-site"
-          type="file"
-          accept="application/json,.json"
-          hidden
-          onChange={async (e) => {
-            const f = e.target.files?.[0];
-            e.target.value = '';
-            if (!f) return;
-            try {
-              p.onImport(JSON.parse(await f.text()));
-            } catch {
-              p.onImport(null);
-            }
-          }}
-        />
-        <button className="btn small ghost" onClick={p.onLoadSample} disabled={!!p.busy}>Reload sample site</button>
-      </div>
-      <p className="hint">The export includes <span className="mono">site.json</span>, so you can reopen a site here later.</p>
-      <hr className="sep" />
-      <div className="field">
-        <label className="eyebrow" htmlFor="site-brief">Site brief</label>
-        <textarea id="site-brief" className="textarea" rows={4} value={p.brief} placeholder="What the site is for, who it’s for, the tone, what visitors should do." onChange={(e) => p.onBrief(e.target.value)} />
-        <p className="hint">AI clients connected over MCP read this to write in the site’s voice (and can update it).</p>
-      </div>
     </>
   );
 }

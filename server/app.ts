@@ -35,6 +35,7 @@ import { join, extname, basename, dirname, resolve, sep } from 'node:path';
 import { ConflictError, DraftStore, withFileLock } from './store.ts';
 import { createMcpHandler } from './mcp.ts';
 import { createDeployer } from './deploy.ts';
+import { createClients } from './clients.ts';
 
 /** The headless site engine (src/lib/engine.ts). Injected so tests and dev can load it from source. */
 export type Engine = typeof import('../src/lib/engine');
@@ -59,6 +60,8 @@ export interface ServerOptions {
   mcpToken?: string;
   /** false disables the MCP endpoint. */
   mcp?: boolean;
+  /** Home folder whose AI apps' configs "Connect" edits (tests use a temp folder). Default: the user's home. */
+  homeDir?: string;
   /** How to start `prepress mcp` (stdio) for this site; shown in the editor. Absent in dev. */
   stdioCommand?: { command: string; args: string[] };
 }
@@ -129,6 +132,13 @@ const NOT_PUBLISHED = `<!doctype html><html lang="en"><head><meta charset="utf-8
 <style>body{font:16px/1.5 system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;background:#f6f6f4;color:#1d1d1b}main{text-align:center;padding:24px}a{color:inherit}</style></head>
 <body><main><h1>Nothing published yet</h1><p>Open the <a href="/?admin=1">editor</a> to build and publish this site.</p></main></body></html>`;
 
+export interface PublishOptions {
+  /** false: only render to outDir. */
+  deploy?: boolean;
+  /** Upload to these targets (ids or names) instead of the auto ones; [] = none. */
+  targets?: string[];
+}
+
 export type CoreOptions = Pick<ServerOptions, 'dataDir' | 'outDir' | 'siteUrl' | 'engine'>;
 
 /**
@@ -193,14 +203,15 @@ export function createSiteCore(opts: CoreOptions) {
   const deployer = createDeployer({ dataDir: dir, outDir });
   // Publish and deploy take a lock file too: an editor server and a stdio MCP process may share this folder.
   const publishLock = join(dir, 'publish.lock');
-  const deployFiles = (which?: string, full = false) => deployer.deploy(readManifest().files, which, full);
+  const deployFiles = (which?: string | string[], full = false) => deployer.deploy(readManifest().files, which, full);
   const deploy = (which?: string, full = false) => withFileLock(publishLock, () => deployFiles(which, full), 10 * 60_000);
 
   /** Render the current draft on the server, write the static site, then deploy to the auto targets. */
-  async function publishSite(by: string, opt: { deploy?: boolean } = {}) {
+  /** Publish: render, write outDir, upload. `targets` (ids or names) picks where to upload; default: the auto targets. */
+  async function publishSite(by: string, opt: PublishOptions = {}) {
     return withFileLock(publishLock, () => publishLocked(by, opt), 10 * 60_000);
   }
-  async function publishLocked(by: string, opt: { deploy?: boolean }) {
+  async function publishLocked(by: string, opt: PublishOptions) {
     const engine = opts.engine;
     if (!engine) throw Object.assign(new Error('Server-side publishing is not available'), { status: 501 });
     const draft = store.read();
@@ -211,7 +222,7 @@ export function createSiteCore(opts: CoreOptions) {
     const publishedAt = new Date().toISOString();
     writeAtomic(manifestFile, JSON.stringify({ publishedAt, outDir, files, by }));
     await store.patch({ publishedHash: engine.siteHash(draft.site) });
-    const deploys = opt.deploy === false ? [] : await deployFiles('auto');
+    const deploys = opt.deploy === false ? [] : await deployFiles(opt.targets ?? 'auto');
     return { publishedAt, outDir, siteUrl: opts.siteUrl ?? null, files: files.length, pages: Object.keys(pages), deploys };
   }
 
@@ -239,6 +250,7 @@ export function createHandler(opts: ServerOptions) {
   store.watch();
   const isAdmin = (url: URL) => url.searchParams.get('admin') === '1';
   const runtime = opts.runtime ?? 'server';
+  const clients = runtime === 'desktop' && opts.stdioCommand ? createClients({ dataDir: dir, stdio: opts.stdioCommand, home: opts.homeDir }) : null;
   // The desktop app's AI connection is stdio; no network endpoint needed.
   const mcpEnabled = !!opts.engine && opts.mcp !== false && runtime !== 'desktop';
   const tokenFile = join(dir, 'mcp-token.txt');
@@ -305,8 +317,19 @@ export function createHandler(opts: ServerOptions) {
       return;
     }
     if (route === 'GET /api/mcp') {
-      if (runtime === 'desktop') return json(res, 200, { mode: 'stdio', stdio: opts.stdioCommand ?? null });
+      if (runtime === 'desktop') return json(res, 200, { mode: 'stdio', stdio: opts.stdioCommand ?? null, name: clients?.name ?? null, clients: clients?.list() ?? [] });
       return json(res, 200, { mode: 'http', enabled: mcpEnabled, token: mcpEnabled ? mcpToken : null, fixed: !!opts.mcpToken });
+    }
+    if (route === 'POST /api/mcp/clients') {
+      // Desktop app only: add/remove this site in an AI app's MCP config on this computer.
+      if (!clients) return json(res, 404, { error: 'Only available in the desktop app' });
+      const { id, action } = (await readJson(req)) ?? {};
+      if (typeof id !== 'string' || (action !== 'connect' && action !== 'disconnect')) return json(res, 400, { error: 'Expected { id, action: "connect" | "disconnect" }' });
+      try {
+        return json(res, 200, { client: action === 'connect' ? clients.connect(id) : clients.disconnect(id) });
+      } catch (e: any) {
+        return json(res, e?.status ?? 400, { error: String(e?.message ?? e) });
+      }
     }
     if (route === 'POST /api/mcp/token') {
       if (!mcpEnabled) return json(res, 404, { error: 'MCP is disabled' });
@@ -319,7 +342,10 @@ export function createHandler(opts: ServerOptions) {
     }
     if (route === 'POST /api/publish') {
       const body = await readJson(req);
-      if (!body?.pages && opts.engine) return json(res, 200, { ok: true, ...(await publishSite('editor', { deploy: body?.deploy !== false })) });
+      if (!body?.pages && opts.engine) {
+        const targets = Array.isArray(body?.targets) ? body.targets.filter((t: unknown): t is string => typeof t === 'string').slice(0, 20) : undefined;
+        return json(res, 200, { ok: true, ...(await publishSite('editor', { deploy: body?.deploy !== false, targets })) });
+      }
       const pages: Record<string, string> = body?.pages ?? {};
       if (!body?.site?.pages || !Object.keys(pages).length) return json(res, 400, { error: 'Expected { site, pages }' });
       for (const slug of Object.keys(pages)) if (!SLUG.test(slug)) return json(res, 400, { error: `Bad page slug: ${slug}` });

@@ -1,5 +1,5 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, CloudUpload, Download, Eye, EyeOff, FilePlus2, ListTree, Monitor, Plus, Redo2, Settings, Smartphone, Tablet, Undo2, X } from 'lucide-react';
+import { Check, CloudUpload, Download, Eye, EyeOff, FilePlus2, ListTree, Monitor, PanelRight, Plus, Redo2, Settings, Smartphone, Tablet, Undo2, X } from 'lucide-react';
 import type { Design, PartSlug, Site } from '../lib/types';
 import { TARGET_WP_VERSION } from '../lib/types';
 import { friendlyError } from '../lib/ai/client';
@@ -20,6 +20,8 @@ import { PagePanel } from './PagePanel';
 import { PartPanel } from './PartPanel';
 import { MarkupView } from './MarkupView';
 import { NewSiteDialog } from './NewSiteDialog';
+import { PublishDialog } from './PublishDialog';
+import { SettingsDialog, type SettingsSection } from './SettingsDialog';
 import { buildStarter, starterById } from '../lib/starters';
 import { Logo } from './icons';
 import { Breadcrumb, Canvas, EditorProvider, Inserter, Inspector, Outline, SelectionSync, useEditorHistoryShortcuts } from './editor/Editor';
@@ -29,7 +31,7 @@ type Tab = 'page' | 'block' | 'styles' | 'site';
 type Left = 'inserter' | 'outline' | null;
 type SaveState = 'saved' | 'saving' | 'error' | 'idle';
 
-const TAB_LABEL: Record<Tab, string> = { page: 'Page', block: 'Block', styles: 'Styles', site: 'Site' };
+const TAB_LABEL: Record<Tab, string> = { page: 'Page', block: 'Block', styles: 'Styles', site: 'Pages' };
 /** Stable empty list: a fresh `[]` per render would rebuild the editor settings and reload the canvas. */
 const NONE: never[] = [];
 const PART_LABEL: Record<PartSlug, string> = { header: 'Header', footer: 'Footer' };
@@ -67,6 +69,8 @@ export function App() {
   const [sidebar, setSidebar] = useState(() => window.innerWidth >= 960);
   const [device, setDevice] = useState<Device>('desktop');
   const [dialog, setDialog] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [settings, setSettings] = useState<SettingsSection | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>('idle');
@@ -305,8 +309,9 @@ export function App() {
     designTimer.current = window.setTimeout(() => setSite((s) => applyDesign(s, d)), 120);
   };
 
-  const onPublish = async () => {
-    if (!site) return;
+  /** Save, render on the server, upload to `targets` (ids). Throws on failure; the Publish dialog shows per-target results. */
+  const doPublish = async (targets: string[]) => {
+    if (!site) throw new Error('No site');
     setBusy('Publishing');
     setError(null);
     try {
@@ -320,16 +325,16 @@ export function App() {
           saving.current = false;
         }
       }
-      const r = await publish();
+      const r = await publish(targets);
       setPublishedHash(siteHash(site));
       setPublishedAt(r.publishedAt);
       const deploys = r.deploys ?? [];
-      const failed = deploys.filter((d) => !d.ok);
-      if (deploys.length) window.dispatchEvent(new Event('pp:deployed'));
-      if (failed.length) setError(`Published, but deploy failed: ${failed.map((d) => `${d.name}: ${d.error}`).join('; ')}`);
-      flash(`Published ${site.pages.length} pages${deploys.length ? ` · deployed to ${deploys.filter((d) => d.ok).map((d) => d.name).join(', ') || 'no targets'}` : ''}`);
+      window.dispatchEvent(new Event('pp:deployed'));
+      const ok = deploys.filter((d) => d.ok);
+      flash(`Published ${site.pages.length} pages${ok.length ? ` · uploaded to ${ok.map((d) => d.name).join(', ')}` : ''}`);
+      return r;
     } catch (e: any) {
-      setError(friendlyError(e));
+      throw new Error(friendlyError(e));
     } finally {
       setBusy(null);
     }
@@ -545,12 +550,15 @@ export function App() {
             <button className="btn hide-narrow" onClick={() => setDialog(true)} disabled={!!busy}><FilePlus2 size={16} /> New site</button>
             <button className="btn hide-narrow" onClick={onExport} disabled={!!busy} title="Download a WordPress block theme + content import"><Download size={16} /> Export</button>
             {backend?.kind === 'server' && (
-              <button className="btn primary" onClick={onPublish} disabled={!!busy || (!unpublished && !!publishedAt)} title={publishedAt ? `Last published ${new Date(publishedAt).toLocaleString()}` : 'Not published yet'}>
+              <button className="btn primary" onClick={() => setPublishing(true)} disabled={!!busy} title={publishedAt ? `Last published ${new Date(publishedAt).toLocaleString()}${unpublished ? ' · there are unpublished changes' : ''}` : 'Not published yet'}>
                 {unpublished || !publishedAt ? <CloudUpload size={16} /> : <Check size={16} />}
                 {unpublished || !publishedAt ? 'Publish' : 'Published'}
               </button>
             )}
-            <button className={`btn icon-btn ${sidebar ? 'primary' : 'ghost'}`} onClick={() => setSidebar((x) => !x)} aria-pressed={sidebar} aria-label="Settings" title="Settings">
+            <button className={`btn icon-btn ${sidebar ? 'pressed' : 'ghost'}`} onClick={() => setSidebar((x) => !x)} aria-pressed={sidebar} aria-label="Sidebar" title={sidebar ? 'Hide sidebar' : 'Show sidebar'}>
+              <PanelRight size={18} />
+            </button>
+            <button className="btn ghost icon-btn" onClick={() => setSettings('general')} aria-label="Settings" title="Settings: site, publishing, AI connection, data">
               <Settings size={18} />
             </button>
           </div>
@@ -651,20 +659,12 @@ export function App() {
                 {tab === 'site' && (
                   <SitePanel
                     site={site}
-                    brief={brief}
-                    onBrief={setBrief}
                     busy={busy}
-                    onRename={(name, tagline) => setSite((s) => rebuildParts({ ...s, name, tagline }))}
                     onAddPage={onAddPage}
                     onRemovePage={(id) => {
                       setSite((s) => removePage(s, id));
                       if (id === page.id) switchPage(site.pages[0].id);
                     }}
-                    onImport={onImport}
-                    onLoadSample={() => void loadSample()}
-                    validation={validation}
-                    serverMode={backend?.kind === 'server'}
-                    published={!!publishedAt}
                     onEditPattern={(id) => { setPatternId(id); setMode('edit'); }}
                     onDeletePattern={(id) => { setSite((s) => deletePattern(s, id)); if (patternId === id) setPatternId(null); }}
                     onDeleteBlock={(name) => setSite((s) => deleteBlock(s, name, true))}
@@ -681,6 +681,23 @@ export function App() {
             replaces={!isSample}
             onClose={() => setDialog(false)}
             onStarter={(id, name, about) => startFrom(id, name, about)}
+          />
+        )}
+        {publishing && <PublishDialog pages={site.pages.length} onPublish={doPublish} onClose={() => setPublishing(false)} />}
+        {settings && (
+          <SettingsDialog
+            site={site}
+            brief={brief}
+            busy={busy}
+            validation={validation}
+            serverMode={backend?.kind === 'server'}
+            published={!!publishedAt}
+            initial={settings}
+            onRename={(name, tagline) => setSite((s) => rebuildParts({ ...s, name, tagline }))}
+            onBrief={setBrief}
+            onImport={(d) => { onImport(d); setSettings(null); }}
+            onLoadSample={() => { void loadSample(); setSettings(null); }}
+            onClose={() => setSettings(null)}
           />
         )}
         {toast && <div className="toast" role="status">{toast}</div>}

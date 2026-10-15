@@ -28,7 +28,7 @@ WordPress). Exopanel needs no Prepress process, no PHP and no database for these
    Apache: `ErrorDocument 404 /404.html`. The site must be at the root of its (sub)domain.
 
 2. Upload credentials, shown to the customer as **one connection string** they paste
-   into Prepress (Site → Publish to → Add publish target):
+   into Prepress (Publish → *Where should this site go?*, or Settings → Publishing):
 
    ```
    sftp://acme:<password>@server1.exopanel.example/home/acme/htdocs/example.com

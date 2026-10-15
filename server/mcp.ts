@@ -22,7 +22,7 @@ import { VERSION } from './version.ts';
 export interface McpContext {
   store: DraftStore;
   engine: Engine;
-  publishSite(by: string, opt?: { deploy?: boolean }): Promise<unknown>;
+  publishSite(by: string, opt?: { deploy?: boolean; targets?: string[] }): Promise<unknown>;
   exportWordPress(): Promise<{ file: string; path: string; localPath: string; stats: unknown }>;
   /** Push the published files to deploy targets (server/deploy.ts). */
   deploy(which?: string, full?: boolean): Promise<unknown[]>;
@@ -426,11 +426,14 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
     // ---------- ship ----------
     tool(
       'publish_site',
-      'Render every page to static HTML, write it to the publish folder, then deploy it to every deploy target marked auto (local folders / SFTP servers set up by the site owner). Run validate_site first. Check each entry of "deploys" for ok/error.',
-      { deploy: z.boolean().optional().describe('false = only write the publish folder, skip deploy targets') },
-      async ({ deploy }) => {
+      'Render every page to static HTML, write it to the publish folder, then upload it to the publish targets marked auto (SFTP, FTP, S3, folders set up by the site owner; see get_site.deployTargets), or to the targets you name. Run validate_site first. Check each entry of "deploys" for ok/error.',
+      {
+        deploy: z.boolean().optional().describe('false = only render to the publish folder, upload nowhere'),
+        targets: z.array(z.string()).optional().describe('Target names to upload to instead of the auto ones'),
+      },
+      async ({ deploy, targets }) => {
         draft();
-        return ctx.publishSite('mcp', { deploy });
+        return ctx.publishSite('mcp', { deploy, targets });
       },
     );
 

@@ -88,7 +88,7 @@ export function NewSiteDialog({ defaultName, replaces, onClose, onStarter }: Pro
           <button className="btn ghost" onClick={onClose}>Cancel</button>
           <button className="btn primary" onClick={() => create()}>Create {starter.id === 'blank' ? 'blank site' : `from “${starter.title}”`}</button>
         </div>
-        <p className="hint">Everything is ordinary WordPress blocks: edit text in place, add sections with +, restyle in Styles. An AI client connected over MCP (Site tab) can rewrite any section in your site’s voice.</p>
+        <p className="hint">Everything is ordinary WordPress blocks: edit text in place, add sections with +, restyle in Styles. An AI client connected over MCP (Settings → AI connection) can rewrite any section in your site’s voice.</p>
       </div>
     </div>
   );

@@ -112,7 +112,8 @@ describe('AI connection depends on the runtime', () => {
   const start = async (runtime: 'desktop' | 'server') => {
     const d = mkdtempSync(join(tmpdir(), `prepress-${runtime}-`));
     const engine = {} as any; // only presence matters for the MCP switch
-    const h = createHandler({ dataDir: d, runtime, engine, stdioCommand: { command: '/Applications/Prepress.app/Contents/MacOS/prepress', args: ['mcp', '--data', d] } });
+    const home = join(d, 'home');
+    const h = createHandler({ dataDir: join(d, 'My Site'), runtime, engine, homeDir: home, stdioCommand: { command: '/Applications/Prepress.app/Contents/MacOS/prepress', args: ['mcp', '--data', d] } });
     const s = createServer((q, r) => void h(q, r));
     await new Promise<void>((r) => s.listen(0, '127.0.0.1', r));
     return { b: `http://127.0.0.1:${(s.address() as any).port}`, close: () => (s.close(), rmSync(d, { recursive: true, force: true })) };
@@ -126,6 +127,16 @@ describe('AI connection depends on the runtime', () => {
       expect(info.token).toBeUndefined();
       expect((await fetch(`${b}/mcp`, { method: 'POST' })).status).toBe(404);
       expect((await (await fetch(`${b}/api/health`)).json()).runtime).toBe('desktop');
+      // One-click connect to an AI app (here Cursor, in a temp home folder).
+      expect(info.name).toBe('prepress-my-site');
+      expect(info.clients.find((c: any) => c.id === 'cursor')).toMatchObject({ installed: false, connected: false });
+      const post = (body: unknown) => fetch(`${b}/api/mcp/clients`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const r = await (await post({ id: 'cursor', action: 'connect' })).json();
+      expect(r.client).toMatchObject({ id: 'cursor', connected: true });
+      expect((await post({ id: 'nope', action: 'connect' })).status).toBe(404);
+      expect((await post({ id: 'cursor', action: 'delete-everything' })).status).toBe(400);
+      expect((await fetch(`${b}/api/mcp/clients`, { method: 'POST', headers: { origin: 'https://evil.example', 'content-type': 'application/json' }, body: '{"id":"cursor","action":"disconnect"}' })).status).toBe(403);
+      expect((await (await post({ id: 'cursor', action: 'disconnect' })).json()).client.connected).toBe(false);
     } finally {
       close();
     }
@@ -137,6 +148,7 @@ describe('AI connection depends on the runtime', () => {
       const info = await (await fetch(`${b}/api/mcp`)).json();
       expect(info).toMatchObject({ mode: 'http', enabled: true, token: expect.stringMatching(/^pp_/) });
       expect(info.stdio).toBeUndefined();
+      expect((await fetch(`${b}/api/mcp/clients`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"id":"cursor","action":"connect"}' })).status).toBe(404);
       expect((await fetch(`${b}/mcp`, { method: 'POST' })).status).toBe(401);
     } finally {
       close();

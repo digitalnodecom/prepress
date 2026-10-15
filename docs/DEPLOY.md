@@ -15,7 +15,9 @@ files and uploads them to your host; nothing runs on the host but a web server.
 
 ## Publish targets
 
-Editor → **Site** tab → **Publish to** → *Add publish target*. Paste a
+Click **Publish** in the editor. With no targets yet it asks where the site should
+go; later targets are ticked in the same dialog and managed in **Settings** (gear) →
+**Publishing**. Paste a
 connection string (the template buttons fill one in), **Test**, **Save**. Each
 target has a name, an optional public URL (for "Open" links) and *Upload
 automatically on Publish* (off = only when you click **Upload now**).
@@ -93,7 +95,7 @@ edit locally and publish to the server.
 ## Connecting an AI (MCP)
 
 - **Same computer**: the AI client starts `prepress mcp --data <site folder>` itself
-  and talks over stdio (no port, no token). The editor's Site tab shows the command
+  and talks over stdio (no port, no token). The editor's Settings → AI connection shows the command
   and a Claude Desktop config. It can run while the editor has the folder open.
-- **HTTP** at `/mcp` on the editor's port, with the bearer token from the Site tab
+- **HTTP** at `/mcp` on the editor's port, with the bearer token from Settings → AI connection
   (`<site folder>/mcp-token.txt`); `--no-mcp` turns it off.

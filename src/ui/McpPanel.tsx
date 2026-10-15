@@ -1,12 +1,24 @@
 import { useEffect, useState } from 'react';
-import { Copy, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { CheckCircle2, ChevronRight, Copy, Eye, EyeOff, Plug, RefreshCw, Unplug } from 'lucide-react';
 
 /** GET /api/mcp: how AI clients connect, depending on where Prepress runs. */
 type McpInfo =
   /** Desktop app: the AI client starts `prepress mcp` itself (stdio). */
-  | { mode: 'stdio'; stdio: { command: string; args: string[] } | null }
+  | { mode: 'stdio'; stdio: { command: string; args: string[] } | null; name: string | null; clients: AiApp[] }
   /** Prepress on a server / standalone binary: HTTP endpoint + bearer token. */
   | { mode: 'http'; enabled: boolean; token: string | null; fixed: boolean };
+
+/** An AI app on this computer that Prepress can add itself to (server/clients.ts). */
+interface AiApp {
+  id: string;
+  name: string;
+  installed: boolean;
+  connected: boolean;
+  outdated: boolean;
+  file: string;
+  after: string;
+  problem?: string;
+}
 
 const shq = (a: string) => (/^[\w@%+=:,./~-]+$/.test(a) ? a : `'${a.replace(/'/g, `'\\''`)}'`);
 
@@ -16,6 +28,8 @@ export function McpPanel() {
   const [show, setShow] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [note, setNote] = useState<{ id: string; ok: boolean; text: string } | null>(null);
 
   const load = () =>
     fetch('/api/mcp', { cache: 'no-store' })
@@ -33,6 +47,22 @@ export function McpPanel() {
       setTimeout(() => setCopied(null), 1500);
     } catch {
       /* clipboard blocked */
+    }
+  };
+
+  const setApp = async (app: AiApp, action: 'connect' | 'disconnect') => {
+    setBusy(app.id);
+    setNote(null);
+    try {
+      const r = await fetch('/api/mcp/clients', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: app.id, action }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+      setNote({ id: app.id, ok: true, text: action === 'connect' ? `Added to ${app.name}. ${app.after}` : `Removed from ${app.name}.` });
+      await load();
+    } catch (e: any) {
+      setNote({ id: app.id, ok: false, text: String(e?.message ?? e) });
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -54,7 +84,6 @@ export function McpPanel() {
   if (!info) {
     return (
       <>
-        <span className="eyebrow">AI connection (MCP)</span>
         <p className="hint">Loading…</p>
       </>
     );
@@ -63,31 +92,59 @@ export function McpPanel() {
   if (info.mode === 'stdio') {
     const local = info.stdio;
     const command = local ? `claude mcp add prepress -- ${[local.command, ...local.args].map(shq).join(' ')}` : '';
-    const desktopJson = local ? JSON.stringify({ mcpServers: { prepress: { command: local.command, args: local.args } } }, null, 2) : '';
+    const desktopJson = local ? JSON.stringify({ mcpServers: { [info.name ?? 'prepress']: { command: local.command, args: local.args } } }, null, 2) : '';
+    const apps = [...info.clients].sort((x, y) => Number(y.installed || y.connected) - Number(x.installed || x.connected));
     return (
       <>
-        <span className="eyebrow">AI connection (MCP)</span>
         {intro}
         {!local ? (
           <p className="hint">Not available in this build.</p>
         ) : (
           <>
-            <div className="field">
-              <label>Claude Desktop</label>
-              <pre className="mcp-snippet">{desktopJson}</pre>
-              <div className="row">
-                <button className="btn small" onClick={() => copy('desktop', desktopJson)}><Copy size={14} /> {copied === 'desktop' ? 'Copied' : 'Copy config'}</button>
-              </div>
-              <p className="hint">Settings → Developer → Edit Config, paste into <span className="mono">claude_desktop_config.json</span> (merge with any servers already there), restart Claude Desktop.</p>
+            <div className="ai-apps">
+              {apps.map((app) => (
+                <div key={app.id} className={`ai-app${app.installed || app.connected ? '' : ' absent'}`}>
+                  <div className="ai-app-main">
+                    <span className="section-name">{app.name}</span>
+                    <span className="hint ai-app-state">
+                      {app.problem ? 'Set up by hand (see below)' : app.connected ? (app.outdated ? 'Connected to an older Prepress location' : 'Connected') : app.installed ? 'Installed' : 'Not found on this computer'}
+                    </span>
+                  </div>
+                  {app.connected && !app.outdated && <CheckCircle2 size={16} className="ok-icon" aria-hidden="true" />}
+                  {app.connected ? (
+                    <>
+                      {app.outdated && <button className="btn small primary" disabled={!!busy} onClick={() => setApp(app, 'connect')}><RefreshCw size={14} /> Update</button>}
+                      <button className="btn small ghost" disabled={!!busy} onClick={() => setApp(app, 'disconnect')} title={`Remove this site from ${app.file}`}><Unplug size={14} /> Disconnect</button>
+                    </>
+                  ) : (
+                    <button className={`btn small ${app.installed ? 'primary' : ''}`} disabled={!!busy || !!app.problem} onClick={() => setApp(app, 'connect')} title={`Adds “${info.name}” to ${app.file}`}>
+                      <Plug size={14} /> {busy === app.id ? 'Connecting…' : 'Connect'}
+                    </button>
+                  )}
+                  {note?.id === app.id && <p className={`deploy-status ${note.ok ? 'ok' : 'bad'} ai-app-note`}>{note.text}</p>}
+                  {app.problem && <p className="deploy-status bad ai-app-note">{app.problem}</p>}
+                </div>
+              ))}
             </div>
-            <div className="field">
-              <label>Claude Code</label>
-              <pre className="mcp-snippet">{command}</pre>
-              <div className="row">
-                <button className="btn small" onClick={() => copy('cli', command)}><Copy size={14} /> {copied === 'cli' ? 'Copied' : 'Copy command'}</button>
+            <p className="hint">Connect adds this site as <span className="mono">{info.name}</span> to the app’s MCP settings (other settings are kept; the original file is saved next to it as <span className="mono">.before-prepress</span>). The app then starts Prepress for this site itself: no port, no token, nothing leaves this computer except what you publish.</p>
+
+            <details className="ai-manual">
+              <summary>Other apps / set up by hand <ChevronRight size={14} /></summary>
+              <div className="field">
+                <label>MCP server (JSON, most apps)</label>
+                <pre className="mcp-snippet">{desktopJson}</pre>
+                <div className="row">
+                  <button className="btn small" onClick={() => copy('desktop', desktopJson)}><Copy size={14} /> {copied === 'desktop' ? 'Copied' : 'Copy JSON'}</button>
+                </div>
               </div>
-            </div>
-            <p className="hint">The AI app starts Prepress for this site folder by itself: no port, no token, nothing leaves this computer except what you publish.</p>
+              <div className="field">
+                <label>Command line</label>
+                <pre className="mcp-snippet">{command}</pre>
+                <div className="row">
+                  <button className="btn small" onClick={() => copy('cli', command)}><Copy size={14} /> {copied === 'cli' ? 'Copied' : 'Copy command'}</button>
+                </div>
+              </div>
+            </details>
           </>
         )}
       </>
@@ -97,7 +154,6 @@ export function McpPanel() {
   if (!info.enabled) {
     return (
       <>
-        <span className="eyebrow">AI connection (MCP)</span>
         <p className="hint">MCP is turned off on this server (started with --no-mcp).</p>
       </>
     );
@@ -107,7 +163,6 @@ export function McpPanel() {
   const command = info.token ? `claude mcp add --transport http prepress ${endpoint} --header "Authorization: Bearer ${info.token}"` : '';
   return (
     <>
-      <span className="eyebrow">AI connection (MCP)</span>
       {intro}
       <div className="field">
         <label>Endpoint</label>

@@ -149,6 +149,30 @@ describe('MCP server', () => {
     expect((await fetch(base + exp.path)).status).toBe(200);
   }, 60000);
 
+  test('publish uploads to the chosen targets (editor dialog and MCP), default = the auto ones', async () => {
+    const put = (body: unknown) => fetch(`${base}/api/deploy`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const a = join(dir, 'target-a');
+    const b = join(dir, 'target-b');
+    expect((await put({ targets: [{ name: 'A', connection: a, auto: true }, { name: 'B', connection: b, auto: false }] })).status).toBe(200);
+
+    const byDefault = await call('publish_site');
+    expect(byDefault.deploys.map((d: any) => d.name)).toEqual(['A']);
+    expect(existsSync(join(b, 'index.html'))).toBe(false);
+
+    // The editor's Publish dialog sends the ticked targets.
+    const views = await (await fetch(`${base}/api/deploy`)).json();
+    const idB = views.targets.find((t: any) => t.name === 'B').id;
+    const r = await (await fetch(`${base}/api/publish`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ targets: [idB] }) })).json();
+    expect(r.deploys.map((d: any) => [d.name, d.ok])).toEqual([['B', true]]);
+    expect(existsSync(join(b, 'index.html'))).toBe(true);
+
+    const none = await (await fetch(`${base}/api/publish`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ targets: [] }) })).json();
+    expect(none.deploys).toEqual([]);
+    expect((await call('publish_site', { targets: ['B'] })).deploys.map((d: any) => d.name)).toEqual(['B']);
+    await expect(call('publish_site', { targets: ['Nope'] })).rejects.toThrow(/No publish target "Nope"/);
+    await put({ targets: [] });
+  });
+
   test('errors come back as tool errors with a useful message', async () => {
     await expect(call('get_page', { page: 'nope' })).rejects.toThrow(/No page "nope"/);
     await expect(call('define_block', { name: 'x y', title: 'X', template: '<p>hi</p>' })).rejects.toThrow(/prepress\/my-block/);

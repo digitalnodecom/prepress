@@ -287,7 +287,9 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 0; width: 100%; }
 .mcp-snippet { font: 11px/1.5 var(--font-mono); background: var(--code-bg); padding: 8px; border-radius: 6px; white-space: pre-wrap; word-break: break-all; margin: 0; }
 
 .deploy-row { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); min-width: 0; }
-.deploy-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.deploy-head { display: flex; align-items: center; gap: 8px; }
+.deploy-head .section-name { min-width: 0; }
+.deploy-head > :last-child:not(:nth-child(2)), .deploy-head .ok-icon, .deploy-head .bad-icon { margin-left: auto; }
 .deploy-dest { color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .deploy-status { font-size: 12px; margin: 0; overflow-wrap: anywhere; }
 .deploy-status.ok { color: var(--ok); }
@@ -322,3 +324,49 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 0; width: 100%; }
 .linkish:has(> .lucide:only-child):hover { background: var(--line-soft); }
 .btn.icon-only { padding: 3px; width: 26px; }
 .contrast .lucide { vertical-align: -2px; }
+
+/* Toolbar: sidebar toggle */
+.btn.pressed { background: var(--line-soft); border-color: transparent; color: var(--fg); }
+
+/* Publish dialog */
+.publish-dialog { width: min(680px, 100%); }
+.publish-dialog p a { color: inherit; display: inline-flex; align-items: center; gap: 3px; }
+.publish-targets { display: flex; flex-direction: column; gap: 8px; }
+.publish-target { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); cursor: pointer; }
+.publish-target.on { border-color: var(--accent); background: var(--accent-soft); }
+.publish-target input { margin-top: 3px; accent-color: var(--accent); }
+.publish-target-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.ok-icon { color: var(--ok); }
+.bad-icon { color: var(--bad); }
+.grow-left { margin-right: auto; }
+.target-form { margin: 0; }
+
+/* Settings dialog */
+.settings-dialog { width: min(920px, 100%); height: min(640px, 100%); padding: 0; flex-direction: row; gap: 0; overflow: hidden; }
+.settings-nav { width: 210px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 20px 12px; border-right: 1px solid var(--line); background: var(--panel); }
+.settings-nav h2 { font-size: 20px; margin: 0 8px 12px; }
+.settings-tab { display: flex; align-items: center; gap: 8px; border: 0; background: none; color: var(--fg-2); font: inherit; font-weight: 500; text-align: left; padding: 7px 10px; border-radius: 8px; cursor: pointer; }
+.settings-tab:hover { background: var(--line-soft); color: var(--fg); }
+.settings-tab.on { background: var(--accent-soft); color: var(--fg); }
+.settings-body { position: relative; flex: 1; min-width: 0; overflow: auto; padding: 24px 28px; display: flex; flex-direction: column; gap: 14px; }
+.settings-body h3 { margin: 0; font: 700 20px/1.2 var(--font-display); }
+.settings-close { position: sticky; top: 0; align-self: flex-end; margin: -10px -14px -36px 0; z-index: 1; background: var(--panel); }
+@media (max-width: 640px) {
+  .settings-dialog { flex-direction: column; height: 100%; }
+  .settings-nav { width: auto; flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--line); padding: 12px; }
+  .settings-nav h2 { width: 100%; margin-bottom: 4px; }
+}
+
+/* Settings → AI connection: apps on this computer */
+.ai-apps { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.ai-app { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; background: var(--surface); }
+.ai-app + .ai-app { border-top: 1px solid var(--line-soft); }
+.ai-app.absent .section-name { color: var(--fg-3); }
+.ai-app-main { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.ai-app-state { font-size: 12px; }
+.ai-app-note { flex-basis: 100%; }
+.ai-manual summary { cursor: pointer; color: var(--fg-2); display: inline-flex; align-items: center; gap: 4px; list-style: none; }
+.ai-manual summary::-webkit-details-marker { display: none; }
+.ai-manual[open] summary .lucide { transform: rotate(90deg); }
+.ai-manual[open] { display: flex; flex-direction: column; gap: 12px; }
+.settings-body > * { flex-shrink: 0; }

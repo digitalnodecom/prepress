@@ -4,6 +4,17 @@ This file is for the next agent or developer picking up this project. It explain
 
 Last updated: 2026-10-14 · Version: v0.3 · Target: WordPress 7.0
 
+## v0.6.4 — one-click connect to local AI apps
+
+- Desktop app → Settings → AI connection lists Claude Desktop, Claude Code, Codex, Cursor, VS Code (Copilot), Windsurf, LM Studio, Hermes (installed ones first) with **Connect / Disconnect / Update** (`server/clients.ts`, `POST /api/mcp/clients`). Entry `prepress-<site folder>` → this site's `prepress mcp` (the app's bundled binary). Formats: JSON `mcpServers` (Claude Desktop, Cursor, Windsurf, LM Studio), `~/.claude.json` user-scope `mcpServers` with `type: stdio` (Claude Code), VS Code `User/mcp.json` `servers` with `type: stdio`, Codex `~/.codex/config.toml` `[mcp_servers.<name>]`, Hermes `~/.hermes/config.yaml` `mcp_servers:`. Surgical edits, `.before-prepress` backup, JSONC refused. "Other apps / set up by hand" keeps the copyable JSON and command.
+- Verified: `tests/clients.test.ts` (every format: adds next to existing entries, keeps comments/other tables, idempotent, outdated detection, undo restores the file byte-for-byte; TOML checked with Python tomllib, YAML with `yaml`); API test in desktop runtime; on this Mac the panel detected 6 installed apps and read all their configs without problems. Not done: actually clicking Connect against the real configs on this Mac (that edits the owner's files — left for the owner).
+
+## v0.6.3 — Publish dialog, Settings window
+
+- **Publish** button opens `src/ui/PublishDialog.tsx`: tick targets (defaults = targets marked "Selected by default", formerly `auto`), Publish → per-target result; with no targets it starts on the connection form (Test, Save target) or "Only render locally". API: `POST /api/publish {targets: [ids]}`; MCP `publish_site {targets?}` (names). `deployer.deploy` accepts a list.
+- Gear opens `src/ui/SettingsDialog.tsx`: Site (title, tagline, brief) · Publishing (`DeployPanel`, form extracted as `TargetForm`) · AI connection (`McpPanel`) · Data (open site.json, sample site, blocks used). The sidebar toggle is its own icon (PanelRight). Sidebar "Site" tab → "Pages" (pages, site blocks, patterns).
+- Verified: test for chosen/default/none targets over HTTP and MCP; in the browser: Publish with no targets → folder target saved from the dialog → published and uploaded (4 files) with a per-target ✓; Settings → Publishing lists it.
+
 ## v0.6.2 — AI only through MCP; MCP by runtime
 
 - Removed the editor's AI: AI tab + SectionsPanel (per-section instructions), "Describe it (AI)" in New site, AI page-writing on Add page, the `/api/claude` Anthropic proxy, `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL`. AI clients work over MCP. The site brief is now an editable field in the Site tab (MCP reads/writes it).

@@ -38,7 +38,7 @@ export function PartPanel({ slug, custom, onReset }: Props) {
       ) : (
         <p className="hint">Generated automatically from your site title, pages and styles. Edit it here and it becomes yours to change.</p>
       )}
-      <p className="hint">The site title and tagline blocks show the values from the Site tab. Menu items link to your pages; click one, then the link button, to change where it goes.</p>
+      <p className="hint">The site title and tagline blocks show the values from Settings → Site. Menu items link to your pages; click one, then the link button, to change where it goes.</p>
     </>
   );
 }

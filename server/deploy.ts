@@ -400,9 +400,16 @@ export function createDeployer(opts: { dataDir: string; outDir: string }) {
     save,
     test,
     /** Upload the published files to one target (by id or name), every auto target ('auto') or all ('all'). */
-    async deploy(files: string[], which?: string | 'auto', full = false): Promise<DeployResult[]> {
+    async deploy(files: string[], which?: string | string[], full = false): Promise<DeployResult[]> {
       const all = list();
-      const chosen = !which || which === 'auto' ? all.filter((t) => t.auto) : which === 'all' ? all : all.filter((t) => t.id === which || t.name.toLowerCase() === which.toLowerCase());
+      const match = (w: string) => all.filter((t) => t.id === w || t.name.toLowerCase() === w.toLowerCase());
+      if (Array.isArray(which)) {
+        const chosen = which.flatMap(match);
+        const missing = which.filter((w) => !match(w).length);
+        if (missing.length) throw Object.assign(new Error(`No publish target "${missing[0]}"`), { status: 404 });
+        return Promise.all([...new Set(chosen)].map((t) => deployOne(t, files, full)));
+      }
+      const chosen = !which || which === 'auto' ? all.filter((t) => t.auto) : which === 'all' ? all : match(which);
       if (which && which !== 'auto' && which !== 'all' && !chosen.length) throw Object.assign(new Error(`No publish target "${which}"`), { status: 404 });
       return Promise.all(chosen.map((t) => deployOne(t, files, full)));
     },
