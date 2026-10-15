@@ -23,10 +23,10 @@ export type BackendKind = 'server' | 'local';
 
 export interface Backend {
   kind: BackendKind;
-  /** Server mode only: true when a password is set and this browser is not signed in. */
-  needsLogin: boolean;
   /** Public address of the published site, when configured (--site-url). Else the preview on this server. */
   siteUrl: string | null;
+  /** Name of the site's folder (server mode): a good default site name for a new site. */
+  folder?: string;
 }
 
 const STORAGE_KEY = 'prepress:draft:v1';
@@ -35,20 +35,11 @@ export async function connectBackend(): Promise<Backend> {
   try {
     const r = await fetch('/api/health', { cache: 'no-store' });
     const j = r.ok ? await r.json() : null;
-    if (j?.server) return { kind: 'server', needsLogin: j.auth === false, siteUrl: j.siteUrl ?? null };
+    if (j?.server) return { kind: 'server', siteUrl: j.siteUrl ?? null, folder: j.folder };
   } catch {
     /* no server */
   }
-  return { kind: 'local', needsLogin: false, siteUrl: null };
-}
-
-export async function login(password: string): Promise<boolean> {
-  const r = await fetch('/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password }) });
-  return r.ok;
-}
-
-export async function logout() {
-  await fetch('/api/logout', { method: 'POST' }).catch(() => null);
+  return { kind: 'local', siteUrl: null };
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -109,15 +100,11 @@ export async function exportOnServer(): Promise<{ file: string; path: string; st
   return api('/api/export', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
 }
 
+/** A publish target as the editor edits it. `connection` holds secrets as MASK once saved (the server keeps them). */
 export interface DeployTarget {
   id: string;
   name: string;
-  type: 'folder' | 'sftp';
-  path: string;
-  host?: string;
-  user?: string;
-  port?: number;
-  identityFile?: string;
+  connection: string;
   url?: string;
   auto: boolean;
 }
@@ -133,7 +120,7 @@ export interface DeployResult {
   error?: string;
   backup?: string;
 }
-export type DeployTargetView = DeployTarget & { last: DeployResult | null };
+export type DeployTargetView = DeployTarget & { type: 'folder' | 'sftp' | 'ftp' | 's3'; insecure?: boolean; last: DeployResult | null };
 
 const post = (body: unknown): RequestInit => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 

@@ -1,44 +1,41 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { Check, CloudUpload, Download, Eye, EyeOff, FilePlus2, ListTree, Monitor, Plus, Redo2, Settings, Smartphone, Tablet, Undo2, X } from 'lucide-react';
 import type { Design, PartSlug, Site } from '../lib/types';
 import { TARGET_WP_VERSION } from '../lib/types';
-import { detectAI, friendlyError, type AI } from '../lib/ai/client';
-import { generateSite, editSection, newSection, writePage } from '../lib/ai/generate';
+import { friendlyError } from '../lib/ai/client';
+import { generateSite } from '../lib/ai/generate';
 import { DEMO_BRIEF } from '../lib/ai/demo';
 import {
-  addPage, applyDesign, getSections, insertSection, moveSection, rebuildParts, removePage, removeSection,
-  replaceSection, resetPart, setPageContent, setPart, updatePage, updatePattern, deletePattern, deleteBlock,
+  addPage, applyDesign, rebuildParts, removePage, resetPart, setPageContent, setPart, updatePage, updatePattern, deletePattern, deleteBlock,
 } from '../lib/site';
 import { validateMarkup } from '../lib/wp/markup';
 import { pageUrl, renderPage } from '../lib/wp/render';
 import { exportSite } from '../lib/wp/export';
-import { connectBackend, loadDraft, logout, publish, saveDraft, siteHash, subscribeChanges, type Backend, type Draft } from '../lib/backend';
+import { connectBackend, loadDraft, publish, saveDraft, siteHash, subscribeChanges, type Backend, type Draft } from '../lib/backend';
 import { registerCustomBlocks } from '../lib/wp/customBlocks';
 import { Preview, type Device } from './Preview';
-import { SectionsPanel } from './SectionsPanel';
 import { DesignPanel } from './DesignPanel';
 import { SitePanel } from './SitePanel';
 import { PagePanel } from './PagePanel';
 import { PartPanel } from './PartPanel';
 import { MarkupView } from './MarkupView';
 import { NewSiteDialog } from './NewSiteDialog';
-import { Login } from './Login';
+import { buildStarter, starterById } from '../lib/starters';
 import { Logo } from './icons';
 import { Breadcrumb, Canvas, EditorProvider, Inserter, Inspector, Outline, SelectionSync, useEditorHistoryShortcuts } from './editor/Editor';
 
 type Mode = 'edit' | 'preview' | 'code';
-type Tab = 'page' | 'block' | 'ai' | 'styles' | 'site';
+type Tab = 'page' | 'block' | 'styles' | 'site';
 type Left = 'inserter' | 'outline' | null;
-type PageStatus = 'writing' | 'error' | undefined;
 type SaveState = 'saved' | 'saving' | 'error' | 'idle';
 
-const TAB_LABEL: Record<Tab, string> = { page: 'Page', block: 'Block', ai: 'AI', styles: 'Styles', site: 'Site' };
+const TAB_LABEL: Record<Tab, string> = { page: 'Page', block: 'Block', styles: 'Styles', site: 'Site' };
 /** Stable empty list: a fresh `[]` per render would rebuild the editor settings and reload the canvas. */
 const NONE: never[] = [];
 const PART_LABEL: Record<PartSlug, string> = { header: 'Header', footer: 'Footer' };
 
 export function App() {
   const [backend, setBackend] = useState<Backend | null>(null);
-  const [ai, setAi] = useState<AI | null>(null);
   const [site, setSiteState] = useState<Site | null>(null);
   const [brief, setBrief] = useState('');
   const [isSample, setIsSample] = useState(false);
@@ -63,7 +60,6 @@ export function App() {
       return !v;
     });
   const [selected, setSelected] = useState<number | null>(null);
-  const [status, setStatus] = useState<Record<string, PageStatus>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>('edit');
   const [tab, setTab] = useState<Tab>('block');
@@ -76,7 +72,6 @@ export function App() {
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [publishedHash, setPublishedHash] = useState<string | undefined>(undefined);
   const [publishedAt, setPublishedAt] = useState<string | null>(null);
-  const ctl = useRef<AbortController | null>(null);
   /** Server revision of the draft we hold; saves send it so concurrent MCP edits aren't overwritten. */
   const revRef = useRef<number | undefined>(undefined);
   /** Skip the next autosave (we just loaded this exact state from the server). */
@@ -89,6 +84,18 @@ export function App() {
   const [, force] = useState(0);
   const siteRef = useRef<Site | null>(null);
   siteRef.current = site;
+
+  // Sample / placeholder content becomes the user's own site with their first edit
+  // (then an AI's create_site no longer replaces it without asking).
+  const sampleBase = useRef<Site | null>(null);
+  useEffect(() => {
+    if (!isSample) {
+      sampleBase.current = null;
+      return;
+    }
+    if (!sampleBase.current) sampleBase.current = site;
+    else if (site !== sampleBase.current) setIsSample(false);
+  }, [site, isSample]);
 
   const setSite = useCallback((next: Site | ((s: Site) => Site), opts: { record?: boolean } = {}) => {
     setSiteState((prev) => {
@@ -136,17 +143,16 @@ export function App() {
     });
     past.current = [];
     future.current = [];
+    sampleBase.current = null;
     setSiteState(s);
     setBrief(DEMO_BRIEF);
     setIsSample(true);
     setPageId(s!.pages[0].id);
     setSelected(null);
-    setStatus({});
   }, []);
 
   const boot = useCallback(async (b: Backend) => {
     setBackend(b);
-    if (b.needsLogin) return;
     try {
       const { draft, publishedAt } = await loadDraft(b);
       setPublishedAt(publishedAt);
@@ -160,13 +166,14 @@ export function App() {
         setPageId(draft.site.pages[0]?.id ?? null);
         setSaveState('saved');
       } else {
-        await loadSample();
+        // A new, empty site folder: start blank and offer the templates.
+        startFrom('blank', '', '', true);
+        setDialog(true);
       }
     } catch (e) {
       setError(friendlyError(e));
       await loadSample();
     }
-    detectAI().then(setAi);
   }, [loadSample]);
 
   useEffect(() => {
@@ -183,6 +190,7 @@ export function App() {
     }
     revRef.current = draft.rev;
     skipSave.current = true;
+    sampleBase.current = null;
     setSiteState(draft.site);
     setPublishedHash(draft.publishedHash);
     setIsSample(!!draft.isSample);
@@ -195,7 +203,7 @@ export function App() {
 
   // Live updates: when another client saves, load its version (unless we're mid-save; then the 409 handles it).
   useEffect(() => {
-    if (!backend || backend.kind !== 'server' || backend.needsLogin) return;
+    if (!backend || backend.kind !== 'server') return;
     return subscribeChanges((e) => {
       if (saving.current || (revRef.current !== undefined && e.rev <= revRef.current)) return;
       loadDraft(backend)
@@ -208,7 +216,7 @@ export function App() {
 
   // Autosave the draft (server, or localStorage without a server).
   useEffect(() => {
-    if (!site || !backend || backend.needsLogin || busy?.startsWith('Planning')) return;
+    if (!site || !backend || busy?.startsWith('Planning')) return;
     if (skipSave.current) {
       skipSave.current = false;
       return;
@@ -228,7 +236,6 @@ export function App() {
             return;
           }
           setSaveState('error');
-          if (e?.code === 'auth') setBackend({ ...backend, needsLogin: true });
         })
         .finally(() => {
           saving.current = false;
@@ -238,7 +245,6 @@ export function App() {
   }, [site, brief, isSample, publishedHash, backend, busy, adoptServerDraft]);
 
   const page = site?.pages.find((p) => p.id === pageId) ?? site?.pages[0] ?? null;
-  const sections = useMemo(() => (page ? getSections(page) : []), [page]);
 
   // ---------- derived (deferred: these parse every page) ----------
   const lazySite = useDeferredValue(site);
@@ -265,111 +271,32 @@ export function App() {
   const unpublished = backend?.kind === 'server' && hash !== publishedHash;
 
   // ---------- actions ----------
-  const run = async (label: string, fn: (signal: AbortSignal) => Promise<void>) => {
-    ctl.current?.abort();
-    const c = new AbortController();
-    ctl.current = c;
-    setBusy(label);
-    setError(null);
-    try {
-      await fn(c.signal);
-    } catch (e) {
-      if ((e as any)?.code !== 'cancelled') setError(friendlyError(e));
-    } finally {
-      if (ctl.current === c) {
-        setBusy(null);
-        ctl.current = null;
-      }
+  /** Replace the site with a starter template (undo brings the old one back). `placeholder` = not chosen by the user yet. */
+  function startFrom(id: string, name: string, about: string, placeholder = false) {
+    const { site: s, brief: b } = buildStarter(id, { name, about });
+    const cur = siteRef.current;
+    if (cur && !placeholder) {
+      past.current.push(cur);
+      future.current = [];
     }
-  };
-
-  const stop = () => ctl.current?.abort();
-
-  const generate = (text: string) => {
-    if (!ai || ai.kind === 'demo') return;
     setDialog(false);
-    setBrief(text);
-    run('Planning your site', async (signal) => {
-      await generateSite(ai, text, {
-        signal,
-        onPlan: (s) => {
-          past.current = [];
-          future.current = [];
-          setSiteState(s);
-          setIsSample(false);
-          setPageId(s.pages[0].id);
-          setSelected(null);
-          setStatus(Object.fromEntries(s.pages.map((p) => [p.id, 'writing' as PageStatus])));
-          setBusy('Writing pages');
-        },
-        onPage: (id, markup) => {
-          setSiteState((s) => (s ? setPageContent(s, id, markup) : s));
-          setStatus((st) => ({ ...st, [id]: undefined }));
-        },
-        onPageError: (id, e) => {
-          setStatus((st) => ({ ...st, [id]: 'error' }));
-          setError(friendlyError(e));
-        },
-      });
-    });
-  };
+    sampleBase.current = null;
+    setSiteState(s);
+    setBrief(b);
+    setIsSample(placeholder);
+    setPageId(s.pages[0].id);
+    setPartTarget(null);
+    setPatternId(null);
+    setSelected(null);
+    if (!placeholder) flash(id === 'blank' ? `Started ${s.name}` : `Started ${s.name} from the ${starterById(id)?.title} template`);
+  }
 
-  const retryPage = (id: string) => {
-    if (!ai || !site) return;
-    const p = site.pages.find((x) => x.id === id)!;
-    setStatus((st) => ({ ...st, [id]: 'writing' }));
-    run(`Writing “${p.title}”`, async (signal) => {
-      try {
-        const { markup } = await writePage(ai, siteRef.current!, brief, id, '', signal);
-        setSite((s) => setPageContent(s, id, markup));
-        setStatus((st) => ({ ...st, [id]: undefined }));
-      } catch (e) {
-        setStatus((st) => ({ ...st, [id]: 'error' }));
-        throw e;
-      }
-    });
-  };
-
-  const onEditSection = (index: number, instruction: string) => {
-    if (!ai || !site || !page) return;
-    run('Editing section', async (signal) => {
-      const { markup } = await editSection(ai, siteRef.current!, brief, page.id, index, instruction, signal);
-      if (!markup.trim()) throw new Error('Claude returned an empty section. Try rephrasing.');
-      setSite((s) => replaceSection(s, page.id, index, markup));
-      flash('Section updated');
-    });
-  };
-
-  const onAddSection = (after: number, instruction: string) => {
-    if (!ai || !site || !page) return;
-    run('Adding section', async (signal) => {
-      const { markup } = await newSection(ai, siteRef.current!, brief, page.id, instruction, signal);
-      if (!markup.trim()) throw new Error('Claude returned an empty section. Try rephrasing.');
-      setSite((s) => insertSection(s, page.id, after + 1, markup));
-      setSelected(after + 1);
-      flash('Section added');
-    });
-  };
-
-  const onAddPage = (title: string, purpose: string) => {
+  const onAddPage = (title: string) => {
     if (!site) return;
     const { site: next, page: p } = addPage(site, title);
     setSite(next);
     setPageId(p.id);
     setSelected(null);
-    if (ai && ai.kind !== 'demo') {
-      setStatus((st) => ({ ...st, [p.id]: 'writing' }));
-      run(`Writing “${title}”`, async (signal) => {
-        try {
-          const { markup } = await writePage(ai, next, brief, p.id, purpose, signal);
-          setSite((s) => setPageContent(s, p.id, markup));
-          setStatus((st) => ({ ...st, [p.id]: undefined }));
-        } catch (e) {
-          setStatus((st) => ({ ...st, [p.id]: 'error' }));
-          throw e;
-        }
-      });
-    }
   };
 
   const designTimer = useRef<number | undefined>(undefined);
@@ -402,7 +329,6 @@ export function App() {
       if (failed.length) setError(`Published, but deploy failed: ${failed.map((d) => `${d.name}: ${d.error}`).join('; ')}`);
       flash(`Published ${site.pages.length} pages${deploys.length ? ` · deployed to ${deploys.filter((d) => d.ok).map((d) => d.name).join(', ') || 'no targets'}` : ''}`);
     } catch (e: any) {
-      if (e?.code === 'auth') setBackend((b) => (b ? { ...b, needsLogin: true } : b));
       setError(friendlyError(e));
     } finally {
       setBusy(null);
@@ -473,7 +399,6 @@ export function App() {
     setPartTarget(slug);
     setPatternId(null);
     setSelected(null);
-    if (tab === 'ai') setTab('page');
   };
 
   const onEditorChange = useCallback(
@@ -528,14 +453,9 @@ export function App() {
 
   const templateMode = showTemplate && !part && !editingPattern;
 
-  const aiReady = !!ai && ai.kind !== 'demo';
   /** Where the published site lives: --site-url, else the preview on this server. */
   const siteBase = backend?.kind === 'server' ? backend.siteUrl ?? '' : null;
-  const pageStatus = page ? status[page.id] : undefined;
 
-  if (backend?.needsLogin) {
-    return <Login onDone={() => connectBackend().then(boot)} />;
-  }
 
   if (!site || !page) {
     return (
@@ -580,10 +500,10 @@ export function App() {
               aria-label="Block inserter"
               title="Add block"
             >
-              +
+              <Plus size={18} />
             </button>
-            <button className="btn ghost icon-btn hide-narrow" onClick={undo} disabled={!past.current.length} aria-label="Undo" title="Undo (⌘Z)">↶</button>
-            <button className="btn ghost icon-btn hide-narrow" onClick={redo} disabled={!future.current.length} aria-label="Redo" title="Redo (⇧⌘Z)">↷</button>
+            <button className="btn ghost icon-btn hide-narrow" onClick={undo} disabled={!past.current.length} aria-label="Undo" title="Undo (⌘Z)"><Undo2 size={18} /></button>
+            <button className="btn ghost icon-btn hide-narrow" onClick={redo} disabled={!future.current.length} aria-label="Redo" title="Redo (⇧⌘Z)"><Redo2 size={18} /></button>
             <button
               className={`btn icon-btn hide-narrow ${left === 'outline' ? 'primary' : 'ghost'}`}
               onClick={() => { setMode('edit'); setLeft((l) => (l === 'outline' ? null : 'outline')); }}
@@ -591,14 +511,12 @@ export function App() {
               aria-label="List view"
               title="List view"
             >
-              ☰
+              <ListTree size={18} />
             </button>
           </div>
           <nav className="bar-pages" aria-label="Pages">
             {site.pages.map((p) => (
               <button key={p.id} className="page-tab" aria-current={!part && !editingPattern && p.id === page.id ? 'page' : undefined} onClick={() => switchPage(p.id)}>
-                {status[p.id] === 'writing' && <span className="spin" />}
-                {status[p.id] === 'error' && <span className="dot" style={{ color: 'var(--bad)' }} />}
                 {p.title}
               </button>
             ))}
@@ -613,7 +531,7 @@ export function App() {
           {editingPattern && (
             <span className="page-tab pattern-chip" aria-current="page" title="Editing a pattern: changes apply wherever it is used">
               Pattern: {editingPattern.title}
-              <button className="linkish" onClick={() => setPatternId(null)} aria-label="Stop editing pattern">✕</button>
+              <button className="linkish" onClick={() => setPatternId(null)} aria-label="Stop editing pattern"><X size={14} /></button>
             </span>
           )}
           <div className="bar-right">
@@ -625,15 +543,16 @@ export function App() {
                 </button>
               ))}
             </div>
-            <button className="btn hide-narrow" onClick={() => setDialog(true)} disabled={!!busy}>New site</button>
-            <button className="btn hide-narrow" onClick={onExport} disabled={!!busy} title="Download a WordPress block theme + content import">Export</button>
+            <button className="btn hide-narrow" onClick={() => setDialog(true)} disabled={!!busy}><FilePlus2 size={16} /> New site</button>
+            <button className="btn hide-narrow" onClick={onExport} disabled={!!busy} title="Download a WordPress block theme + content import"><Download size={16} /> Export</button>
             {backend?.kind === 'server' && (
               <button className="btn primary" onClick={onPublish} disabled={!!busy || (!unpublished && !!publishedAt)} title={publishedAt ? `Last published ${new Date(publishedAt).toLocaleString()}` : 'Not published yet'}>
+                {unpublished || !publishedAt ? <CloudUpload size={16} /> : <Check size={16} />}
                 {unpublished || !publishedAt ? 'Publish' : 'Published'}
               </button>
             )}
             <button className={`btn icon-btn ${sidebar ? 'primary' : 'ghost'}`} onClick={() => setSidebar((x) => !x)} aria-pressed={sidebar} aria-label="Settings" title="Settings">
-              ⚙
+              <Settings size={18} />
             </button>
           </div>
         </header>
@@ -644,7 +563,7 @@ export function App() {
               {left === 'outline' && (
                 <div className="left-head">
                   <strong>List view</strong>
-                  <button className="btn ghost small" onClick={() => setLeft(null)} aria-label="Close">✕</button>
+                  <button className="btn ghost small icon-only" onClick={() => setLeft(null)} aria-label="Close"><X size={16} /></button>
                 </div>
               )}
               {left === 'inserter' ? <Inserter onClose={() => setLeft(null)} /> : <Outline />}
@@ -652,45 +571,37 @@ export function App() {
           )}
 
           <section className="canvas" aria-label="Canvas">
-            {(busy || error || isSample || ai?.kind === 'demo') && (
+            {(busy || error || isSample) && (
               <div className="canvas-bar">
-                {isSample && <span className="pill neutral">Sample site — edit anything, or start a <button className="linkish" onClick={() => setDialog(true)}>new site</button></span>}
+                {isSample && <span className="pill neutral">Starter content — edit anything, or pick <button className="linkish" onClick={() => setDialog(true)}>another template</button></span>}
                 {error && (
                   <span className="pill bad" role="alert">
                     {error}
-                    <button className="linkish" onClick={() => setError(null)} aria-label="Dismiss">✕</button>
+                    <button className="linkish" onClick={() => setError(null)} aria-label="Dismiss"><X size={14} /></button>
                   </span>
                 )}
                 <div className="grow" />
                 {busy && (
                   <span className="pill accent" role="status">
                     <span className="spin" /> {busy}…
-                    {ctl.current && <button className="linkish" onClick={stop}>Stop</button>}
                   </span>
                 )}
               </div>
             )}
             <div className="canvas-stage">
-              {!part && pageStatus === 'writing' && !page.content ? (
-                <div className="pending">
-                  <div>
-                    <span className="spin" style={{ display: 'inline-block', color: 'var(--accent)' }} />
-                    <h3>Writing “{page.title}”</h3>
-                    <p className="hint">Choosing patterns and writing copy. Other pages appear as they finish.</p>
-                  </div>
-                </div>
-              ) : mode === 'edit' ? (
+              {mode === 'edit' ? (
                 <Canvas template={templateMode} />
               ) : mode === 'preview' ? (
                 <div className="preview-wrap">
                   <div className="seg device-seg" role="group" aria-label="Device">
                     {(['desktop', 'tablet', 'phone'] as Device[]).map((d) => (
                       <button key={d} aria-pressed={device === d} onClick={() => setDevice(d)}>
+                        {d === 'desktop' ? <Monitor size={15} /> : d === 'tablet' ? <Tablet size={15} /> : <Smartphone size={15} />}
                         {d[0].toUpperCase() + d.slice(1)}
                       </button>
                     ))}
                   </div>
-                  <Preview html={html} device={device} selected={selected} onSelect={(i) => { setSelected(i); setTab('ai'); setSidebar(true); }} onNavigate={navigate} />
+                  <Preview html={html} device={device} selected={selected} onSelect={(i) => setSelected(i)} onNavigate={navigate} />
                 </div>
               ) : (
                 <MarkupView
@@ -705,6 +616,7 @@ export function App() {
               <div className="grow" />
               {mode === 'edit' && !part && !editingPattern && (
                 <button className="btn ghost small" aria-pressed={showTemplate} onClick={toggleTemplate} title="Show the site header and footer around the page; edits to them apply to every page">
+                  {showTemplate ? <EyeOff size={14} /> : <Eye size={14} />}
                   {showTemplate ? 'Hide header & footer' : 'Show header & footer'}
                 </button>
               )}
@@ -720,7 +632,7 @@ export function App() {
           {sidebar && (
             <aside className="rail" aria-label="Settings">
               <div className="rail-tabs" role="tablist">
-                {(['page', 'block', 'ai', 'styles', 'site'] as Tab[]).map((t) => (
+                {(['page', 'block', 'styles', 'site'] as Tab[]).map((t) => (
                   <button key={t} role="tab" className="rail-tab" aria-selected={tab === t} onClick={() => setTab(t)}>
                     {t === 'page' && part ? PART_LABEL[part] : TAB_LABEL[t]}
                   </button>
@@ -736,44 +648,12 @@ export function App() {
                 )}
                 {tab === 'page' && !part && <PagePanel page={page} siteUrl={siteBase} onUpdate={(patch) => setSite((s) => updatePage(s, page.id, patch))} />}
                 {tab === 'block' && <Inspector />}
-                {tab === 'ai' && part && <p className="hint">AI section editing works on pages. Pick a page in the top bar.</p>}
-                {tab === 'ai' && !part && (
-                  <>
-                    {ai?.kind === 'demo' && (
-                      <div className="banner warn">
-                        <div>
-                          <strong>AI is off.</strong>
-                          Set <span className="mono">ANTHROPIC_API_KEY</span> where Prepress runs to generate sites and edit sections with Claude. Everything else works without it.
-                        </div>
-                      </div>
-                    )}
-                    <SectionsPanel
-                      sections={sections}
-                      selected={selected}
-                      aiReady={aiReady}
-                      busy={busy}
-                      pageStatus={pageStatus}
-                      onSelect={(i) => { setSelected(i); if (mode === 'code') setMode('edit'); }}
-                      onEdit={onEditSection}
-                      onAdd={onAddSection}
-                      onMove={(i, dir) => {
-                        setSite((s) => moveSection(s, page.id, i, dir));
-                        setSelected(i + dir);
-                      }}
-                      onRemove={(i) => {
-                        setSite((s) => removeSection(s, page.id, i));
-                        setSelected(null);
-                      }}
-                      onRetry={() => retryPage(page.id)}
-                    />
-                  </>
-                )}
                 {tab === 'styles' && <DesignPanel design={site.design} onChange={onDesign} />}
                 {tab === 'site' && (
                   <SitePanel
                     site={site}
                     brief={brief}
-                    aiReady={aiReady}
+                    onBrief={setBrief}
                     busy={busy}
                     onRename={(name, tagline) => setSite((s) => rebuildParts({ ...s, name, tagline }))}
                     onAddPage={onAddPage}
@@ -784,7 +664,6 @@ export function App() {
                     onImport={onImport}
                     onLoadSample={() => void loadSample()}
                     validation={validation}
-                    onSignOut={backend?.kind === 'server' ? () => logout().then(() => connectBackend().then(boot)) : undefined}
                     serverMode={backend?.kind === 'server'}
                     published={!!publishedAt}
                     onEditPattern={(id) => { setPatternId(id); setMode('edit'); }}
@@ -797,7 +676,14 @@ export function App() {
           )}
         </div>
 
-        {dialog && <NewSiteDialog aiReady={aiReady} initial={isSample ? '' : brief} onClose={() => setDialog(false)} onGenerate={generate} />}
+        {dialog && (
+          <NewSiteDialog
+            defaultName={isSample && backend?.folder && !/^(prepress-data|data|public)$/.test(backend.folder) ? backend.folder : undefined}
+            replaces={!isSample}
+            onClose={() => setDialog(false)}
+            onStarter={(id, name, about) => startFrom(id, name, about)}
+          />
+        )}
         {toast && <div className="toast" role="status">{toast}</div>}
       </div>
     </EditorProvider>

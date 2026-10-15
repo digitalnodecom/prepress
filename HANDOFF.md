@@ -4,7 +4,42 @@ This file is for the next agent or developer picking up this project. It explain
 
 Last updated: 2026-10-14 · Version: v0.3 · Target: WordPress 7.0
 
-## v0.4 changes (read first)
+## v0.6.2 — AI only through MCP; MCP by runtime
+
+- Removed the editor's AI: AI tab + SectionsPanel (per-section instructions), "Describe it (AI)" in New site, AI page-writing on Add page, the `/api/claude` Anthropic proxy, `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL`. AI clients work over MCP. The site brief is now an editable field in the Site tab (MCP reads/writes it).
+- Runtime detection: the desktop app starts the server with `PREPRESS_APP=desktop` → `runtime: 'desktop'`: Site tab shows only the stdio setup (Claude Desktop JSON + Claude Code command pointing at the app's bundled binary) and HTTP `/mcp` is off (404). The standalone binary → `runtime: 'server'`: Site tab shows only the HTTP endpoint + token. `/api/health` reports `runtime`.
+- Verified: tests (desktop/server `/api/mcp` + `/mcp`, proxy gone); browser (server mode: tabs Page/Block/Styles/Site, HTTP panel); desktop app: `/api/mcp` = stdio, `/mcp` 404, and an MCP client started the app's bundled `prepress mcp` from the advertised command (32 tools, read the site).
+
+## v0.6.1 — starter templates
+
+- `src/lib/starters.ts`: **Blank** + 8 starters (local business, restaurant & café, portfolio, studio/agency, product/SaaS, consultant & coach, event/conference, nonprofit). Built from section patterns through `sectionsToMarkup`, `{name}` filled in, each with a `brief` saved as the site brief (+ the user's one-line "what is it about").
+- New-site dialog (`NewSiteDialog.tsx`): Templates tab (live thumbnails via `renderPage` in scaled sandboxed iframes, name + about fields) and the AI "Describe it" tab. A fresh site folder opens with the Blank placeholder (`isSample`) and the picker, name defaulting to the folder name (`/api/health` → `folder`). `isSample` now clears on the first real edit, so an AI's `create_site` can't silently replace user work.
+- MCP: `list_starters`, `create_site {name, starter, brief, design?, replace?}` (default starter "blank"; `pages` without a starter still makes empty pages), `set_brief`; `get_site` returns `brief`. 32 tools.
+- Verified: tests (every starter valid/linked; MCP create-from-starter); in the browser: fresh folder → picker with folder name → Restaurant template → 108 valid blocks, brief saved; placeholder stays a placeholder until the first edit.
+
+## v0.6 changes (read first) — new direction
+
+Owner's direction (2026-10-15): Prepress is **the interface for creating a site**, used as a **local app** (later also hosted at prepress.digitalno.de). Site data stays local until the user **publishes** static files over SFTP / S3 / other connections, or **exports** a WordPress zip. No passwords.
+
+- **Password removed** everywhere (server sessions, `/api/login`, Login screen, `admin-password.txt`, `--password`, `--no-auth`, `--host`). Replaced by: listen on 127.0.0.1 only, `Host` header must be loopback (421 otherwise — DNS rebinding), Origin check on writes. Old `admin-password.txt` / `sessions.json` files in existing data folders are simply ignored.
+- **Publish targets = connection strings** (`server/targets/`): `sftp://` via ssh2 (pure JS, replaces the system `sftp` batch; password, agent or key; TOFU host-key pin per target), `ftp://`/`ftps://` via basic-ftp, `s3://` with a hand-written SigV4 (AWS, R2, MinIO, Spaces …), folders. Secrets only in `<data>/deploy.json` (0600), masked in every response; `MASK` sent back keeps them. UI: Site → **Publish to** (one connection field + templates, Test, Save, plain-FTP warning).
+- **Desktop app** `desktop/` (Tauri 2, Rust): launcher (create site in `~/Documents/Prepress/<name>`, open folder, recent sites), native menus (Sites…, New Site…, Open Site Folder…, Show Site Folder, Open Preview in Browser), external links → system browser, downloads → `~/Downloads` + reveal, server killed on quit (and exits by itself if the app dies: `PREPRESS_PARENT_PID`). `npm run build:desktop` → `.app` + `.dmg` (macOS); build on Windows/Linux for those.
+- Tests: `tests/deploy.test.ts` runs full publishes against an in-process SFTP server (ssh2 `Server`, `tests/fixtures/sftp-server.ts`), a minimal FTP server (`tests/fixtures/ftp-server.ts`), a signature-checking S3 stand-in, and a folder; SigV4 checked against AWS's two published examples; connection-string parsing/masking. `tests/server.test.ts` checks the Host guard.
+- Verified by hand: compiled binary → real OpenSSH (key auth) publish + Test (shows pinned host key); the editor's Publish-to form (templates, plain-FTP warning, connection error message); the desktop app opens a site straight into the editor (no login), the launcher renders with no recent sites, quitting stops the server.
+- Not verified: real AWS S3 / R2 (no credentials here; signing matches AWS's vectors), FTPS against a real server, the desktop app on Windows/Linux, "Create site" click in the app (would write to ~/Documents), code signing / notarization (the .app is ad-hoc signed: other Macs will need right-click → Open until it's signed with a Developer ID).
+- Open for the hosted version (prepress.digitalno.de): where site data lives, how a hosted service uploads (SFTP from the server; only S3-style storage can be written from the browser), auth. See docs/EXOPANEL.md.
+
+## v0.5 changes
+
+- **Local MCP over stdio**: `prepress mcp --data <dir> [--out <dir>] [--site-url <url>]` (`server/stdio.ts`). Same tools as HTTP `/mcp` via `mcpServerFactory()`; HTTP and stdio both build on `createSiteCore()` (split out of `createHandler`). `--data` is required in this mode (clients start it from an unknown cwd). stdout is JSON-RPC only (`server/stdio-guard.ts`).
+- **Shared data folder across processes**: `DraftStore` writes take a lock file (`draft.lock`, stale after 60 s); publish/deploy take `publish.lock`. `store.watch()` (editor server) polls `draft.json` and emits SSE `change` for writes by another process, so an open editor shows "Updated by AI" and reloads. Drafts now store `summary` of the last MCP write.
+- New MCP tool **`create_site`** `{name, tagline?, pages?, design?, replace?}` (30 tools): a fresh folder no longer needs the editor opened first. `replace: true` backs up the old draft to `<data>/backup/draft-<time>.json`. `export_wordpress` now also returns `localPath`.
+- Editor Site tab → AI connection shows the stdio command for Claude Code and a Claude Desktop config (`GET /api/mcp` → `stdio`, computed in `server/main.ts`; null in `npm run dev`). Startup log prints it as "Local AI".
+- `server/version.ts` holds the version (0.5.0).
+- Verified: `tests/stdio.test.ts` (create_site on an empty folder → fill → publish → export; cross-store change event; 20 concurrent writes from two stores serialized). By hand with the binary: SDK `StdioClientTransport` spawning `bin/prepress mcp` while `bin/prepress` served the same folder: create/edit/publish over stdio deployed to a local folder and a real OpenSSH SFTP server; the server's `/api/events` emitted `{by:"mcp"}`; the open editor showed "Updated by AI" and the new title; the command shown in the Site tab works as-is.
+- Direction from the owner: Prepress should become a **local app** (run on your computer, publish to a remote host). Pieces in place: local editor, stdio MCP, SFTP deploy. Missing for an app: packaging (tray/desktop wrapper or `prepress` opening the browser), a site switcher over several data folders, SSH key onboarding in the UI, FTP/SFTP-password hosts.
+
+## v0.4 changes
 
 - **Deploy targets** (`server/deploy.ts`): Publish writes `--out` (staging, previewed at `/`), then copies it to every `auto` target: `folder` (local dir) or `sftp` (system OpenSSH `sftp -b` batch, `BatchMode=yes`, `accept-new`, user's keys). Per-target hash manifest in `<data>/deploys/<id>.json` → only changed files upload, only our files get removed, foreign files backed up to `<data>/backup/<id>-<time>/`. Config `<data>/deploy.json`, validated by `cleanTarget` (no option injection via host, no quotes in batch paths, folders can't overlap `--data`/`--out`).
 - API: `GET/PUT /api/deploy`, `POST /api/deploy` `{target?, full?}`, `POST /api/deploy/test`. Publish responses carry `deploys[]`. MCP: `publish_site {deploy?}` deploys; new `deploy_site {target?, full?}` (29 tools). MCP can't edit targets.

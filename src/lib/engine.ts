@@ -17,6 +17,7 @@ export { patternCatalogForPrompt, expandPattern, PATTERNS } from './wp/patterns'
 export { buildThemeJson, sanitizeDesign, FONTS, FONT_SIZES, SPACING_SIZES } from './wp/design';
 export { generateSite } from './ai/generate';
 export { DEMO_BRIEF } from './ai/demo';
+export { STARTERS, buildStarter, starterCatalog } from './starters';
 export { ensureBlocks } from './wp/registry';
 
 import { getBlockType } from '@wordpress/blocks';

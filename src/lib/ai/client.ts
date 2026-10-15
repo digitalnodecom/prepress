@@ -1,8 +1,8 @@
 /**
- * AI transport. Three backends, picked at startup:
- *  1. "claude"  – running as a claude.ai artifact: uses the viewer's Claude via the `sample` capability
- *  2. "proxy"   – local dev server: POST /api/claude (vite middleware calling the Anthropic API)
- *  3. "demo"    – no AI available: a built-in sample site, so everything else can be tested
+ * The AI interface the site-generation pipeline (generate.ts) is written
+ * against. The editor no longer talks to an AI itself — AI clients work on
+ * the site over MCP — so the only implementation left in the app is "demo"
+ * (the built-in sample site); tests supply fakes.
  */
 
 export type AIKind = 'claude' | 'proxy' | 'demo';
@@ -44,51 +44,6 @@ declare global {
   interface Window {
     claude?: { use(name: string): Promise<any> };
   }
-}
-
-async function claudeBackend(): Promise<AI | null> {
-  if (!window.claude?.use) return null;
-  const sample = await window.claude.use('sample').catch(() => null);
-  if (!sample) return null;
-  return {
-    kind: 'claude',
-    async json<T>(prompt: string, opts: { signal?: AbortSignal; fresh?: boolean } = {}) {
-      try {
-        return (await sample.json(prompt, { signal: opts.signal, modelTier: 'default', ...(opts.fresh ? { cache: false } : {}) })) as T;
-      } catch (e: any) {
-        throw new AIError(e?.code ?? 'upstream_error', e?.message ?? 'Claude request failed', e?.text);
-      }
-    },
-  };
-}
-
-async function proxyBackend(): Promise<AI | null> {
-  try {
-    const r = await fetch('/api/health');
-    if (!r.ok) return null;
-    const j = await r.json();
-    if (!j.ok) return null;
-  } catch {
-    return null;
-  }
-  return {
-    kind: 'proxy',
-    async json<T>(prompt: string, opts: { signal?: AbortSignal } = {}) {
-      const r = await fetch('/api/claude', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ prompt }),
-        signal: opts.signal,
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new AIError(j.code ?? 'upstream_error', j.error ?? `HTTP ${r.status}`);
-      return extractJson(j.text) as T;
-    },
-  };
-}
-
-export async function detectAI(): Promise<AI> {
-  return (await claudeBackend()) ?? (await proxyBackend()) ?? { kind: 'demo', json: async () => { throw new AIError('demo', 'No AI backend available'); } };
 }
 
 export function friendlyError(e: unknown): string {

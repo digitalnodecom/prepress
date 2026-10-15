@@ -16,7 +16,7 @@
 ## Commands
 
 - `npm test` — vitest (jsdom). ~30 s; WordPress packages are inlined via `test.server.deps.inline`.
-- `npm run dev` — Vite + the real server handler (`server/app.ts`): site at `/`, editor at `/?admin=1`, data in `./prepress-data` (or `PREPRESS_DATA`). AI needs `ANTHROPIC_API_KEY` in `.env.local`.
+- `npm run dev` — Vite + the real server handler (`server/app.ts`): site at `/`, editor at `/?admin=1`, data in `./prepress-data` (or `PREPRESS_DATA`).
 - `npm run build` — single-file admin build (`dist/index.html`) + `dist/prepress.html` artifact page.
 - `npm run build:bin` — build + compile `bin/prepress` (Bun, embeds `dist/index.html`). `build:bin:all` cross-compiles macOS/Linux/Windows.
 - `npx tsc` — typecheck.
@@ -36,7 +36,11 @@
 - Core edit components for `site-title`, `site-tagline`, `navigation`, `navigation-link` need core-data/REST, so `src/ui/editor/dynamicBlocks.tsx` replaces them via `editor.BlockEdit`. Attributes stay core's.
 - Canvas CSS is passed to the editor iframe via `__unstableResolvedAssets.styles`; parent-page CSS is not the content CSS.
 - The public site is static HTML rendered by the admin (`renderPage`) at Publish time and written by the server into `--out` (a plain static folder any web server can serve; Prepress needn't run). Publish only touches files in its manifest (`<data>/published.json`) and backs up anything else it would overwrite. `--out` may never contain `--data`. Changing `render.ts` needs a re-publish to show up.
-- Deploy targets (`server/deploy.ts`) copy `--out` elsewhere after Publish (local folder or `sftp -b` batch). Same ownership rule per target: hash manifest in `<data>/deploys/<id>.json`, never delete what we didn't upload, back up what we'd overwrite. Anything user-typed that reaches the sftp command line or batch file goes through `cleanTarget` first.
+- The editor has no built-in AI (no AI tab, no /api/claude, no ANTHROPIC_API_KEY): all AI editing goes through MCP. `ServerOptions.runtime` ('desktop' when `PREPRESS_APP=desktop`, set by the Tauri app) picks what the Site tab offers: desktop → stdio command/config only and HTTP /mcp disabled; server → HTTP /mcp + token only. `src/lib/ai/*` remains for the offline sample site (demo) and the tests.
+- MCP has two transports over one tool set (`mcpServerFactory` in `server/mcp.ts`): HTTP `/mcp` on the editor server, and stdio `prepress mcp --data …` (`server/stdio.ts`). Both use `createSiteCore()` (`server/app.ts`: store, publish, deploy, export without HTTP). An editor server and a stdio process may share one data folder: `DraftStore` writes take `<data>/draft.lock`, publish/deploy take `<data>/publish.lock`, and `store.watch()` polls `draft.json` so the server's SSE announces writes from the other process. In stdio mode stdout is JSON-RPC only: `server/stdio-guard.ts` (imported first) sends `console.log` to stderr.
+- Publish targets (`server/deploy.ts`, transports in `server/targets/`) upload `--out` after Publish. A target is a connection string (`targets/connection.ts`): `sftp://` (ssh2, pure JS: password, agent or key; host key pinned per target in `<data>/deploys/<id>.json`), `ftp://`/`ftps://` (basic-ftp), `s3://` (own SigV4 in `targets/s3.ts`, tested against AWS's published examples; `?endpoint=` for R2/MinIO), or a folder. Same ownership rule per target: hash manifest, never delete what we didn't upload, back up what we'd overwrite. Secrets live only in `<data>/deploy.json` (0600): every view/API/MCP response uses `viewTarget()` (masked `••••••`), and MASK sent back means "keep the stored secret". Never return a raw `DeployTarget` to the client or MCP.
+- No password, by design (local app). The server listens on 127.0.0.1 only and `createHandler` answers 421 unless the `Host` header is a loopback name (DNS-rebinding guard), plus the Origin check on writes. Don't add `--host`/0.0.0.0 back without real auth.
+- Desktop app: `desktop/` (Tauri 2). `src-tauri/src/main.rs` spawns the bundled `prepress` (sidecar, `externalBin`) per site folder on a stable per-folder port with `PREPRESS_PARENT_PID`, and loads `/?admin=1`; `ui/` is the launcher (recent sites, create, open folder). `Info.plist` allows local networking (ATS), otherwise WKWebView won't load http://127.0.0.1. Build: `npm run build:desktop` (copies `bin/prepress` to `binaries/prepress-<triple>`).
 - `@wordpress/format-library` CSS is not in its `exports` map; it's aliased in `vite.config.ts`.
 - `@wordpress/vips/worker` is aliased to `src/stubs/vips.ts`; otherwise 13 MB of WASM gets bundled.
 - `@wordpress/*` direct dependencies must equal their override versions exactly or npm errors with `EOVERRIDE`.
@@ -50,3 +54,9 @@
 1. Add an entry to `PATTERNS` in `wp/patterns.ts` (description + compact props schema the model sees + `build`).
 2. Use `section()`, `card()`, `grid()`, `buttons()` helpers and preset slugs.
 3. Add sample props to the "every pattern" test in `tests/roundtrip.test.ts` if it needs new keys; run `npm test`.
+
+## Adding a starter template
+
+1. Add an entry to `STARTERS` in `src/lib/starters.ts`: `plan` (name, tagline, design with preset fonts/palette, pages) and `pages` (pattern calls per page slug, same shape as AI output). Write `{name}` wherever the site name belongs; link only to the starter's own pages.
+2. Write a `brief` the AI can act on: kind of site, tone, what visitors should do.
+3. `npm test` — `tests/starters.test.ts` checks every starter: valid blocks, no normalizer repairs, name filled in, no dead internal links.

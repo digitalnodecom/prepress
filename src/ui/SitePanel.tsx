@@ -9,15 +9,14 @@ import { DeployPanel } from './DeployPanel';
 interface Props {
   site: Site;
   brief: string;
-  aiReady: boolean;
   busy: string | null;
   validation: { blocks: number; invalid: number; byName: Record<string, number> } | null;
   onRename(name: string, tagline: string): void;
-  onAddPage(title: string, purpose: string): void;
+  onAddPage(title: string): void;
+  onBrief(brief: string): void;
   onRemovePage(id: string): void;
   onImport(data: unknown): void;
   onLoadSample(): void;
-  onSignOut?(): void;
   serverMode?: boolean;
   /** Something has been published (deploy needs it). */
   published?: boolean;
@@ -30,7 +29,6 @@ export function SitePanel(p: Props) {
   const [name, setName] = useState(p.site.name);
   const [tagline, setTagline] = useState(p.site.tagline);
   const [newTitle, setNewTitle] = useState('');
-  const [newPurpose, setNewPurpose] = useState('');
   const [confirm, setConfirm] = useState<string | null>(null);
 
   useEffect(() => {
@@ -76,18 +74,16 @@ export function SitePanel(p: Props) {
       <div className="add-box">
         <label className="eyebrow" htmlFor="new-page-title">Add a page</label>
         <input id="new-page-title" className="input" placeholder="Title, e.g. Pricing" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
-        <input id="new-page-purpose" className="input" placeholder={p.aiReady ? 'What should it cover? (optional)' : 'Without AI the page starts empty'} value={newPurpose} disabled={!p.aiReady} onChange={(e) => setNewPurpose(e.target.value)} />
         <div className="row end">
           <button
             className="btn small"
             disabled={!newTitle.trim() || !!p.busy}
             onClick={() => {
-              p.onAddPage(newTitle.trim(), newPurpose.trim());
+              p.onAddPage(newTitle.trim());
               setNewTitle('');
-              setNewPurpose('');
             }}
           >
-            {p.aiReady ? 'Add & write page' : 'Add page'}
+            Add page
           </button>
         </div>
       </div>
@@ -182,15 +178,14 @@ export function SitePanel(p: Props) {
           }}
         />
         <button className="btn small ghost" onClick={p.onLoadSample} disabled={!!p.busy}>Reload sample site</button>
-        {p.onSignOut && <button className="btn small ghost" onClick={p.onSignOut}>Sign out</button>}
       </div>
       <p className="hint">The export includes <span className="mono">site.json</span>, so you can reopen a site here later.</p>
-      {p.brief && (
-        <details>
-          <summary className="hint" style={{ cursor: 'pointer' }}>Brief used for AI</summary>
-          <p className="hint" style={{ marginTop: 6, whiteSpace: 'pre-wrap' }}>{p.brief}</p>
-        </details>
-      )}
+      <hr className="sep" />
+      <div className="field">
+        <label className="eyebrow" htmlFor="site-brief">Site brief</label>
+        <textarea id="site-brief" className="textarea" rows={4} value={p.brief} placeholder="What the site is for, who it’s for, the tone, what visitors should do." onChange={(e) => p.onBrief(e.target.value)} />
+        <p className="hint">AI clients connected over MCP read this to write in the site’s voice (and can update it).</p>
+      </div>
     </>
   );
 }

@@ -1,11 +1,15 @@
 /**
- * MCP server (Streamable HTTP, stateless) — lets an AI read and change the
+ * MCP server — lets an AI read and change the
  * whole site: pages, sections, header/footer, design, theme.json, custom
  * blocks, patterns; then publish or export it.
  *
  * Every write goes through the draft store (rev bump + live update in open
  * editors) and the same normalize → serialize path as the editor's AI, so
  * the stored content is always valid WordPress block markup.
+ *
+ * Two transports share the same tools: Streamable HTTP at /mcp on the
+ * editor server (createMcpHandler, bearer token) and stdio (`prepress mcp`,
+ * server/stdio.ts) for AI clients on the same machine.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -13,12 +17,13 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { z } from 'zod';
 import type { Engine } from './app.ts';
 import type { DraftStore, StoredDraft } from './store.ts';
+import { VERSION } from './version.ts';
 
 export interface McpContext {
   store: DraftStore;
   engine: Engine;
   publishSite(by: string, opt?: { deploy?: boolean }): Promise<unknown>;
-  exportWordPress(): Promise<{ file: string; path: string; stats: unknown }>;
+  exportWordPress(): Promise<{ file: string; path: string; localPath: string; stats: unknown }>;
   /** Push the published files to deploy targets (server/deploy.ts). */
   deploy(which?: string, full?: boolean): Promise<unknown[]>;
   deployTargets(): { id: string; name: string; type: string; url?: string; auto: boolean; last: unknown }[];
@@ -28,6 +33,8 @@ export interface McpContext {
 type Site = any;
 
 const INSTRUCTIONS = `Prepress edits a website whose content is WordPress block markup (Gutenberg). You never write HTML for content: send JSON block trees or pattern calls and Prepress serializes them with WordPress's own code.
+
+New site: list_starters → create_site {starter, name, brief} gives complete, valid pages to adapt (or starter "blank"). The site brief (get_site.brief) says what the site is for: keep content in its voice, and update it with set_brief when the direction changes.
 
 Workflow: get_site → get_block_catalog (blocks, attribute names, preset slugs, built-in section patterns, custom blocks) → edit with the tools → validate_site → publish_site (renders the static site and deploys it to the auto deploy targets) or export_wordpress. deploy_site re-pushes the last publish to a target.
 
@@ -50,12 +57,13 @@ const sectionSchema = z.any().describe('A pattern call {"pattern","props"} or a 
 const sectionsSchema = z.array(sectionSchema).describe('Sections, top to bottom');
 const pageRef = z.string().describe('Page id, slug ("home" = front page) or title');
 
-export function createMcpHandler(ctx: McpContext) {
+/** All Prepress tools; returns a function that builds a fresh McpServer (one per HTTP request, one for stdio). */
+export function mcpServerFactory(ctx: McpContext): () => McpServer {
   const { store, engine: e } = ctx;
 
   const draft = (): StoredDraft => {
     const d = store.read();
-    if (!d?.site?.pages) throw new Error('There is no site yet. Open the editor once to create it.');
+    if (!d?.site?.pages) throw new Error('There is no site yet. Create one with create_site (or open the editor once).');
     e.registerCustomBlocks(d.site.blocks ?? []);
     return d;
   };
@@ -123,15 +131,16 @@ export function createMcpHandler(ctx: McpContext) {
     };
 
   function build() {
-    const server = new McpServer({ name: 'prepress', version: '0.3.0' }, { instructions: INSTRUCTIONS });
+    const server = new McpServer({ name: 'prepress', version: VERSION }, { instructions: INSTRUCTIONS });
     const tool = (name: string, description: string, inputSchema: Record<string, z.ZodTypeAny>, fn: (args: any) => unknown, readOnly = false) =>
       server.registerTool(name, { description, inputSchema, annotations: { readOnlyHint: readOnly, destructiveHint: !readOnly && /delete|reset/.test(name) } }, wrap(fn) as any);
 
     // ---------- read ----------
     tool('get_site', 'Overview: name, tagline, pages, header/footer status, custom blocks, patterns, publish info, revision.', {}, () => {
-      const { site, rev } = draft();
+      const { site, rev, brief } = draft() as StoredDraft & { brief?: string };
       return {
         rev,
+        brief: brief ?? '',
         name: site.name,
         tagline: site.tagline,
         siteUrl: ctx.siteUrl ?? null,
@@ -141,7 +150,7 @@ export function createMcpHandler(ctx: McpContext) {
         customBlocks: (site.blocks ?? []).map((b: any) => ({ name: b.name, title: b.title, attributes: Object.keys(b.attributes), usedIn: e.blockUsage(site, b.name) })),
         patterns: (site.patterns ?? []).map((p: any) => ({ id: p.id, slug: p.slug, title: p.title, synced: p.synced })),
         themeJsonPatched: !!site.themeJson,
-        deployTargets: ctx.deployTargets().map((t) => ({ name: t.name, type: t.type, url: t.url ?? null, auto: t.auto, last: t.last })),
+        deployTargets: ctx.deployTargets().map((t) => ({ name: t.name, type: t.type, url: t.url ?? null, auto: t.auto, last: t.last })), // never the connection: it may hold passwords
       };
     }, true);
 
@@ -278,6 +287,56 @@ export function createMcpHandler(ctx: McpContext) {
     tool('reset_part', 'Go back to the automatically generated header or footer.', { part: z.enum(['header', 'footer']) }, ({ part }) => change(`Reset the ${part}`, (site) => ({ site: e.resetPart(site, part) })));
 
     // ---------- site & design ----------
+    tool('list_starters', 'Starter templates for create_site: complete small sites (pages, design, header/footer) for common kinds of site, plus "blank".', {}, () => ({ starters: e.starterCatalog() }), true);
+
+    tool(
+      'create_site',
+      'Start a new site from a starter template (see list_starters; default "blank"): its pages, design and copy, with your name filled in. Then adapt it: rewrite sections in the brief\'s voice, add/remove pages, set_design. Or pass pages (titles) instead of a starter for empty pages. Refuses to replace an existing site unless replace: true (the old draft is backed up).',
+      {
+        name: z.string(),
+        starter: z.string().optional().describe('Starter id from list_starters'),
+        brief: z.string().optional().describe('What the site is for: business, audience, tone, what visitors should do. Saved as the site brief.'),
+        tagline: z.string().optional(),
+        pages: z.array(z.object({ title: z.string(), slug: z.string().optional() })).optional().describe('Empty pages instead of a starter'),
+        design: z.record(z.string(), z.any()).optional().describe('Same fields as set_design; applied over the starter design'),
+        replace: z.boolean().optional(),
+      },
+      async ({ name, starter, brief, tagline, pages, design, replace }) => {
+        const cur = store.read();
+        if (cur?.site?.pages?.length && !cur.isSample && !replace) {
+          throw new Error(`There is already a site ("${cur.site.name}", ${cur.site.pages.length} pages). Edit it, or pass replace: true to start over.`);
+        }
+        e.registerCustomBlocks([]);
+        let site: Site;
+        let siteBrief = brief ?? '';
+        if (pages?.length && !starter) {
+          site = e.siteFromPlan({ name, tagline: tagline ?? '', design: design ?? {}, pages: pages.map((p: any) => ({ title: p.title, slug: p.slug ?? '', purpose: '', sections: [] })) });
+        } else {
+          const built = e.buildStarter(starter ?? 'blank', { name, tagline, about: brief });
+          site = built.site;
+          siteBrief = built.brief;
+          if (design) site = e.applyDesign(site, e.sanitizeDesign({ ...site.design, ...design, palette: { ...site.design.palette, ...(design.palette ?? {}) } }));
+        }
+        const backup = cur?.site ? store.backup() : null;
+        const summary = `Created the site "${site.name}"${starter ? ` from the ${starter} starter` : ''}`;
+        const d = await store.create(site, 'mcp', summary, { brief: siteBrief });
+        return {
+          ok: true,
+          summary,
+          rev: d.rev,
+          brief: siteBrief,
+          pages: site.pages.map((p: any) => ({ id: p.id, title: p.title, slug: p.slug, sections: e.getSections(p).map(e.sectionLabel) })),
+          ...(backup ? { previousDraftBackup: backup } : {}),
+          validation: validation(site),
+        };
+      },
+    );
+
+    tool('set_brief', 'Replace the site brief: what the site is for, audience, tone, goals. The editor’s AI and future MCP sessions read it.', { brief: z.string() }, async ({ brief }) => {
+      const d = await store.update('mcp', (cur) => ({ site: cur.site, summary: 'Updated the site brief', fields: { brief: brief.slice(0, 4000) } }));
+      return { ok: true, rev: d.rev };
+    });
+
     tool('set_site_info', 'Change the site title and/or tagline.', { name: z.string().optional(), tagline: z.string().optional() }, ({ name, tagline }) =>
       change('Updated site title/tagline', (site) => ({ site: e.rebuildParts({ ...site, name: name ?? site.name, tagline: tagline ?? site.tagline }) })),
     );
@@ -377,7 +436,7 @@ export function createMcpHandler(ctx: McpContext) {
 
     tool(
       'deploy_site',
-      'Push the last published version to deploy targets without re-rendering. Targets are configured by the site owner in the editor (Site tab → Deploy); see get_site.deployTargets.',
+      'Upload the last published version to publish targets (SFTP, FTP, S3, folders) without re-rendering. Targets and their passwords are set by the site owner in the editor (Site tab → Publish to); see get_site.deployTargets.',
       {
         target: z.string().optional().describe('Target name or id; omit for all targets'),
         full: z.boolean().optional().describe('Re-upload every file, not only changed ones'),
@@ -385,7 +444,7 @@ export function createMcpHandler(ctx: McpContext) {
       async ({ target, full }) => ({ deploys: await ctx.deploy(target ?? 'all', !!full) }),
     );
 
-    tool('export_wordpress', 'Build the WordPress export (block theme with custom blocks and patterns + content.xml + site.json). Returns a download path (send the same bearer token).', {}, async () => {
+    tool('export_wordpress', 'Build the WordPress export (block theme with custom blocks and patterns + content.xml + site.json). Returns the zip\'s path on this machine (localPath) and an HTTP download path on the editor server (send the same bearer token).', {}, async () => {
       draft();
       return ctx.exportWordPress();
     });
@@ -393,6 +452,11 @@ export function createMcpHandler(ctx: McpContext) {
     return server;
   }
 
+  return build;
+}
+
+export function createMcpHandler(ctx: McpContext) {
+  const build = mcpServerFactory(ctx);
   return async function handle(req: IncomingMessage, res: ServerResponse) {
     if (req.method !== 'POST') {
       res.writeHead(405, { 'content-type': 'application/json', allow: 'POST' });

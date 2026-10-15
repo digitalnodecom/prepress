@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv, type Plugin } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { viteSingleFile } from 'vite-plugin-singlefile';
 import { fileURLToPath } from 'node:url';
@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
  * published site, admin API, uploads and the AI proxy behave as in production.
  * Vite serves the admin app itself at /?admin=1. Data lives in ./prepress-data.
  */
-function prepressServer(env: Record<string, string>): Plugin {
+function prepressServer(): Plugin {
   return {
     name: 'prepress-server',
     configureServer(server) {
@@ -22,9 +22,6 @@ function prepressServer(env: Record<string, string>): Plugin {
         return createHandler({
           engine,
           dataDir: process.env.PREPRESS_DATA || fileURLToPath(new URL('./prepress-data', import.meta.url)),
-          password: env.PREPRESS_PASSWORD || process.env.PREPRESS_PASSWORD || '',
-          anthropicKey: env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY,
-          model: env.ANTHROPIC_MODEL || process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5',
         });
       };
       server.middlewares.use((req, res, next) => {
@@ -35,10 +32,9 @@ function prepressServer(env: Record<string, string>): Plugin {
   };
 }
 
-export default defineConfig(({ mode, isSsrBuild }) => {
-  const env = loadEnv(mode, process.cwd(), '');
+export default defineConfig(({ isSsrBuild }) => {
   return {
-    plugins: [react(), ...(process.env.ANALYZE || isSsrBuild ? [] : [viteSingleFile()]), ...(process.env.VITEST ? [] : [prepressServer(env)])],
+    plugins: [react(), ...(process.env.ANALYZE || isSsrBuild ? [] : [viteSingleFile()]), ...(process.env.VITEST ? [] : [prepressServer()])],
     // The headless engine (src/lib/engine.ts) is bundled whole for the Bun binary. In dev,
     // only WordPress packages go through Vite (their block.json imports need it), like in tests.
     ssr: { noExternal: isSsrBuild ? true : [/@wordpress/, /@ariakit/], target: 'node' },

@@ -34,7 +34,7 @@ beforeAll(async () => {
   const { mkdirSync } = await import('node:fs');
   mkdirSync(data, { recursive: true });
   writeFileSync(join(data, 'draft.json'), JSON.stringify({ site, brief: '', isSample: true, rev: 1 }));
-  const handle = createHandler({ dataDir: data, outDir: join(dir, 'www'), engine, mcpToken: TOKEN, password: 'pw' });
+  const handle = createHandler({ dataDir: data, outDir: join(dir, 'www'), engine, mcpToken: TOKEN });
   server = createServer((req, res) => void handle(req, res));
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${(server.address() as any).port}`;
@@ -145,8 +145,8 @@ describe('MCP server', () => {
     expect(wxr).toContain('<wp:post_type><![CDATA[wp_block]]></wp:post_type>');
     expect(wxr).toContain(`<!-- wp:block {"ref":${ref}} /-->`);
 
-    // Without the token, exports can't be downloaded.
-    expect((await fetch(base + exp.path)).status).toBe(401);
+    // The editor (same machine, no password) can download it too.
+    expect((await fetch(base + exp.path)).status).toBe(200);
   }, 60000);
 
   test('errors come back as tool errors with a useful message', async () => {
@@ -157,13 +157,11 @@ describe('MCP server', () => {
   });
 
   test('editor saves with a stale revision are refused', async () => {
-    const login = await fetch(`${base}/api/login`, { method: 'POST', body: JSON.stringify({ password: 'pw' }) });
-    const cookie = login.headers.get('set-cookie')!.split(';')[0];
-    const cur = await (await fetch(`${base}/api/site`, { headers: { cookie } })).json();
-    const stale = await fetch(`${base}/api/site`, { method: 'PUT', headers: { cookie }, body: JSON.stringify({ site: cur.draft.site, baseRev: cur.draft.rev - 1 }) });
+    const cur = await (await fetch(`${base}/api/site`, {})).json();
+    const stale = await fetch(`${base}/api/site`, { method: 'PUT', body: JSON.stringify({ site: cur.draft.site, baseRev: cur.draft.rev - 1 }) });
     expect(stale.status).toBe(409);
     expect((await stale.json()).draft.rev).toBe(cur.draft.rev);
-    const fresh = await fetch(`${base}/api/site`, { method: 'PUT', headers: { cookie }, body: JSON.stringify({ site: cur.draft.site, baseRev: cur.draft.rev }) });
+    const fresh = await fetch(`${base}/api/site`, { method: 'PUT', body: JSON.stringify({ site: cur.draft.site, baseRev: cur.draft.rev }) });
     expect(fresh.status).toBe(200);
     expect(existsSync(join(dir, 'data', 'draft.json'))).toBe(true);
   });

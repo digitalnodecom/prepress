@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { createServer, type Server } from 'node:http';
+import { createServer, request, type Server } from 'node:http';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,7 +10,6 @@ let server: Server;
 let base = '';
 let dir = '';
 let out = '';
-let cookie = '';
 
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'prepress-'));
@@ -19,7 +18,7 @@ beforeAll(async () => {
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, 'index.html'), 'PANEL PLACEHOLDER');
   writeFileSync(join(out, '.htaccess'), 'panel rules');
-  const handle = createHandler({ dataDir: join(dir, 'data'), outDir: out, adminHtml: '<!doctype html><title>admin</title>', password: 'secret' });
+  const handle = createHandler({ dataDir: join(dir, 'data'), outDir: out, adminHtml: '<!doctype html><title>admin</title>' });
   server = createServer((req, res) => void handle(req, res));
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${(server.address() as any).port}`;
@@ -31,7 +30,7 @@ afterAll(() => {
 });
 
 const site = { name: 'S', tagline: '', design: {}, header: '', footer: '', pages: [{ id: 'a', title: 'Home', slug: 'home', content: '' }, { id: 'b', title: 'About', slug: 'about', content: '' }] };
-const req = (path: string, init: RequestInit = {}) => fetch(base + path, { ...init, headers: { cookie, ...(init.headers as any) }, redirect: 'manual' });
+const req = (path: string, init: RequestInit = {}) => fetch(base + path, { ...init, headers: { ...(init.headers as any) }, redirect: 'manual' });
 
 describe('server', () => {
   test('placeholder before publishing; admin only at ?admin=1', async () => {
@@ -41,13 +40,15 @@ describe('server', () => {
     expect(await (await req('/about/?admin=1')).text()).toContain('<title>admin</title>');
   });
 
-  test('admin API requires login', async () => {
-    expect((await req('/api/site')).status).toBe(401);
-    expect((await req('/api/login', { method: 'POST', body: JSON.stringify({ password: 'nope' }) })).status).toBe(401);
-    const ok = await req('/api/login', { method: 'POST', body: JSON.stringify({ password: 'secret' }) });
-    expect(ok.status).toBe(200);
-    cookie = ok.headers.get('set-cookie')!.split(';')[0];
+  test('no password; only requests addressed to localhost are answered (DNS rebinding)', async () => {
     expect((await req('/api/site')).status).toBe(200);
+    const port = Number(new URL(base).port);
+    const status = (host: string) =>
+      new Promise<number>((ok, fail) => request({ host: '127.0.0.1', port, path: '/api/site', headers: { host } }, (r) => { r.resume(); ok(r.statusCode!); }).on('error', fail).end());
+    expect(await status(`evil.example:${port}`)).toBe(421);
+    expect(await status(`127.0.0.1.nip.io:${port}`)).toBe(421);
+    expect(await status(`localhost:${port}`)).toBe(200);
+    expect(await status(`[::1]:${port}`)).toBe(200);
   });
 
   test('draft round trip', async () => {
@@ -105,16 +106,49 @@ describe('server', () => {
     expect(existsSync(join(out, m.url))).toBe(true);
     expect((await (await req('/api/media')).json()).items).toHaveLength(1);
   });
+});
 
-  test('sessions survive a restart; logout revokes', async () => {
-    const again = createHandler({ dataDir: join(dir, 'data'), outDir: out, password: 'secret' });
-    const s2 = createServer((q, r) => void again(q, r));
-    await new Promise<void>((r) => s2.listen(0, '127.0.0.1', r));
-    const b2 = `http://127.0.0.1:${(s2.address() as any).port}`;
-    expect((await fetch(b2 + '/api/site', { headers: { cookie } })).status).toBe(200);
-    s2.close();
-    expect(readFileSync(join(dir, 'data', 'sessions.json'), 'utf8')).not.toContain(cookie.split('=')[1]);
-    await req('/api/logout', { method: 'POST' });
-    expect((await req('/api/site')).status).toBe(401);
+describe('AI connection depends on the runtime', () => {
+  const start = async (runtime: 'desktop' | 'server') => {
+    const d = mkdtempSync(join(tmpdir(), `prepress-${runtime}-`));
+    const engine = {} as any; // only presence matters for the MCP switch
+    const h = createHandler({ dataDir: d, runtime, engine, stdioCommand: { command: '/Applications/Prepress.app/Contents/MacOS/prepress', args: ['mcp', '--data', d] } });
+    const s = createServer((q, r) => void h(q, r));
+    await new Promise<void>((r) => s.listen(0, '127.0.0.1', r));
+    return { b: `http://127.0.0.1:${(s.address() as any).port}`, close: () => (s.close(), rmSync(d, { recursive: true, force: true })) };
+  };
+
+  test('desktop app: stdio only, no HTTP /mcp', async () => {
+    const { b, close } = await start('desktop');
+    try {
+      const info = await (await fetch(`${b}/api/mcp`)).json();
+      expect(info).toMatchObject({ mode: 'stdio', stdio: { args: expect.arrayContaining(['mcp']) } });
+      expect(info.token).toBeUndefined();
+      expect((await fetch(`${b}/mcp`, { method: 'POST' })).status).toBe(404);
+      expect((await (await fetch(`${b}/api/health`)).json()).runtime).toBe('desktop');
+    } finally {
+      close();
+    }
+  });
+
+  test('server: HTTP endpoint with token, no stdio', async () => {
+    const { b, close } = await start('server');
+    try {
+      const info = await (await fetch(`${b}/api/mcp`)).json();
+      expect(info).toMatchObject({ mode: 'http', enabled: true, token: expect.stringMatching(/^pp_/) });
+      expect(info.stdio).toBeUndefined();
+      expect((await fetch(`${b}/mcp`, { method: 'POST' })).status).toBe(401);
+    } finally {
+      close();
+    }
+  });
+
+  test('the AI proxy is gone', async () => {
+    const { b, close } = await start('server');
+    try {
+      expect((await fetch(`${b}/api/claude`, { method: 'POST', body: '{}' })).status).toBe(404);
+    } finally {
+      close();
+    }
   });
 });

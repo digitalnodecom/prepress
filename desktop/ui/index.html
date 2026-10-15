@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Prepress</title>
+  <link rel="stylesheet" href="launcher.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <svg width="40" height="40" viewBox="0 0 22 22" aria-hidden="true">
+        <rect x="2" y="2" width="18" height="5" rx="1.5" fill="var(--accent)" />
+        <rect x="6" y="8.5" width="14" height="5" rx="1.5" fill="var(--fg)" opacity=".85" />
+        <rect x="2" y="15" width="11" height="5" rx="1.5" fill="var(--fg)" opacity=".5" />
+      </svg>
+      <div>
+        <h1>Prepress</h1>
+        <p class="sub">Build a website with the WordPress block editor. Publish it to any host.</p>
+      </div>
+    </header>
+
+    <section id="starting" hidden>
+      <div class="spinner" aria-hidden="true"></div>
+      <p>Opening <strong id="starting-name"></strong>…</p>
+    </section>
+
+    <section id="home">
+      <div class="actions">
+        <form id="new-form" class="new">
+          <input id="new-name" placeholder="New site name, e.g. Harbor Bakery" autocomplete="off" />
+          <button class="primary" type="submit"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg> Create site</button>
+        </form>
+        <button id="open-folder" type="button"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"></path></svg> Open folder…</button>
+      </div>
+      <p class="hint">New sites are saved in <span class="mono" id="sites-folder"></span>. A site is just a folder: back it up, sync it, or open it on another computer.</p>
+
+      <p id="error" class="error" role="alert" hidden></p>
+
+      <h2 id="recent-title" hidden>Recent sites</h2>
+      <ul id="sites"></ul>
+    </section>
+  </main>
+  <script src="launcher.js"></script>
+</body>
+</html>

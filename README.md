@@ -2,26 +2,44 @@
 
 > Picking this up? Read **[HANDOFF.md](HANDOFF.md)** first.
 
-A website builder that runs as **one binary**, edits pages in the **real WordPress block editor (Gutenberg)**, serves the site itself, and exports to WordPress at any time. Every page is stored as Gutenberg `post_content`, styles live in a real `theme.json`, and "Export" produces a block theme + WXR import file that open in WordPress 7.0 with zero invalid blocks. Optional: Claude generates whole sites from a brief and edits sections from plain-language instructions.
+A website builder you run on your own computer (desktop app or one binary). You edit pages in the **real WordPress block editor (Gutenberg)**; the site stays in a local folder until you **publish** it as static HTML to your host (SFTP, FTP/FTPS, S3 or R2) or **export** it to WordPress. Every page is stored as Gutenberg `post_content`, styles live in a real `theme.json`, and "Export" produces a block theme + WXR import file that open in WordPress 7.0 with zero invalid blocks. AI works on the site from outside, over MCP: Claude Desktop, Claude Code or any MCP client can write pages, restyle, add blocks and publish, while the editor updates live.
 
 ## Run it
 
+**Desktop app** (`npm run build:desktop` → `desktop/src-tauri/target/release/bundle/`): a native window (Tauri, Rust) with a site launcher — create a site, open a site folder, recent sites. Each site is a folder (default `~/Documents/Prepress/<name>`); the app runs the bundled `prepress` server for it and stops it on quit.
+
+**Binary**:
+
 ```bash
-./prepress                      # site:   http://127.0.0.1:8080/
-                                # editor: http://127.0.0.1:8080/?admin=1
-./prepress --help               # --port, --host, --data, --password, --no-auth
+./prepress --data ~/Sites/example   # editor:  http://127.0.0.1:8080/?admin=1
+                                    # preview: http://127.0.0.1:8080/
+./prepress --help                   # --port, --data, --out, --site-url, --no-mcp
 ```
 
-On first start Prepress creates `./prepress-data/` (draft, published pages, uploads) and prints a generated admin password (also saved in `prepress-data/admin-password.txt`). Set `ANTHROPIC_API_KEY` (env or `.env` next to the binary) to turn on AI.
+There is no password: Prepress listens on 127.0.0.1 only and refuses requests not addressed to localhost (no other machine, and no web page via DNS rebinding, can reach it).
 
+- **Start from a template**: *New site* (or any new, empty site folder) opens a gallery with live previews: **Blank** plus 8 starters (local business, restaurant & café, portfolio, studio/agency, product/SaaS, consultant & coach, event, nonprofit). Your site name is filled in everywhere, and the starter's brief (plus your one-line description) is saved as the **site brief** (Site tab, editable) so an AI client knows what the site is for.
+- **AI = MCP only.** The editor has no built-in AI. The Site tab → *AI connection* shows how to connect, depending on where Prepress runs: in the **desktop app** an AI client starts `prepress mcp` itself (stdio — copy the Claude Desktop config or Claude Code command; HTTP `/mcp` is off); the **standalone binary/server** offers HTTP `/mcp` with a bearer token.
 - **Editor** (`/?admin=1`): Gutenberg canvas with block toolbar, inserter (blocks, our section patterns, media), list view, block inspector, breadcrumbs; plus Page, AI, Styles and Site panels; Edit / Preview / Code modes. Drafts autosave to the server.
-- **Publish** writes a plain static site (`index.html`, `<slug>/index.html`, `404.html`, `uploads/`) into `--out` (default `prepress-data/public`, previewed at `/`), then **deploys** it to every target set in **Site → Deploy**: another folder on this machine (your web root) or a remote server over SFTP (your SSH keys). Only changed files are uploaded; only files Prepress uploaded are ever deleted. Or point the web server at `--out` and stop Prepress when you're not editing. See [docs/DEPLOY.md](docs/DEPLOY.md); for running it per site inside a hosting panel (systemd, reverse proxy, env config) see [docs/EXOPANEL.md](docs/EXOPANEL.md).
+- **Publish** renders a plain static site (`index.html`, `<slug>/index.html`, `404.html`, `uploads/`) into `--out` (default `<data>/public`, previewed at `/`), then uploads it to every target in **Site → Publish to**. A target is a connection string — `sftp://user:pass@host/var/www/site` (password, SSH key or agent), `ftps://user:pass@host/public_html`, `s3://KEY:SECRET@bucket/prefix?region=…` (or `&endpoint=` for R2, MinIO, Spaces, B2), or a local folder. Only changed files are uploaded; only files Prepress uploaded are ever deleted; anything it would replace is backed up first. Passwords stay in the site folder (`deploy.json`, mode 0600) and are never sent back to the page. See [docs/DEPLOY.md](docs/DEPLOY.md); hosting providers: [docs/EXOPANEL.md](docs/EXOPANEL.md).
 - **Export** downloads the WordPress theme + content zip. The theme ships every site-made block (`blocks/`, registered from the theme, no plugin) and pattern (`patterns/`, synced ones as reusable blocks in `content.xml`).
 - **MCP** (`/mcp`, Streamable HTTP, bearer token): an AI can read and change the whole site — pages and sections, header/footer, design tokens, theme.json, custom block types, patterns — then publish or export. Open editors update live. Connect Claude Code with the command shown in the editor's **Site** tab:
 
   ```bash
   claude mcp add --transport http prepress http://127.0.0.1:8080/mcp --header "Authorization: Bearer <token>"
   ```
+- **Local MCP (stdio)**: `prepress mcp --data <folder>` runs the same tools over stdin/stdout, so an AI client on your computer (Claude Desktop, Claude Code) starts Prepress itself: no port, no token. It works on a folder that has no site yet (`create_site`) and can run while the editor has the same folder open (writes are locked across processes; the editor reloads live). The editor's **Site** tab shows the exact command and the Claude Desktop config.
+
+  ```bash
+  claude mcp add prepress -- /path/to/prepress mcp --data ~/Sites/example --out ~/Sites/example/public
+  ```
+
+## Local app, remote host
+
+1. Open the desktop app → **Create site** (or `./prepress --data ~/Sites/example`, or let an AI build it over `prepress mcp`).
+2. **Site → Publish to → Add publish target**: paste the connection your host gave you (SFTP, FTPS, S3/R2), **Test**, **Save**.
+3. **Publish**: the site is rendered on your computer and only changed files are uploaded. The host only serves static files. An AI can do the same with `publish_site` / `deploy_site`.
+4. **Export** any time for WordPress (theme + content zip).
 
 ## Develop
 
@@ -30,6 +48,7 @@ npm install
 npm test            # block validity, AI pipeline, export, server
 npm run dev         # http://localhost:5173/?admin=1 (same server handler, data in ./prepress-data)
 npm run build:bin   # → bin/prepress for this machine
+npm run desktop     # desktop app in dev mode (needs Rust + cargo-tauri); npm run build:desktop to bundle
 npm run build:bin:all  # → bin/prepress-{darwin,linux}-{arm64,x64}, prepress-windows-x64.exe
 ```
 
@@ -72,7 +91,9 @@ src/lib/backend.ts        drafts, publish, media (server or localStorage)
 src/ui/editor/*           Gutenberg block editor integration, media library
 src/ui/*                  React app
 server/app.ts             HTTP handler: public site, admin API, uploads, AI proxy
-server/main.ts            binary entry point (CLI flags, password, listen)
+server/main.ts            binary entry point (CLI flags, listen on 127.0.0.1, `prepress mcp`)
+server/deploy.ts          publish targets (state, ownership, backups); server/targets/* = sftp, ftp, s3, folder
+desktop/                  desktop app (Tauri): src-tauri/src/main.rs + ui/ launcher; scripts/desktop.mjs builds it
 tests/*                   vitest (jsdom)
 ```
 

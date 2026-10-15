@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The bundled site launcher page. The editor (served by the local Prepress server over http://127.0.0.1) gets no IPC access.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

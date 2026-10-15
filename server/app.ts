@@ -7,7 +7,12 @@
  *   /?admin=1 (any path)     admin app (the Gutenberg-style editor)
  *   /, /<slug>/              preview of the published site (served from outDir)
  *   /uploads/<file>          uploaded media
- *   /api/*                   admin API (session cookie required when a password is set)
+ *   /api/*                   admin API
+ *
+ * There is no password: the server listens on 127.0.0.1 only and answers only
+ * requests addressed to a loopback host name (Host header), so other machines
+ * can't reach it and web pages can't use DNS rebinding to talk to it.
+ * Cross-origin writes are refused (Origin check).
  *
  * Publish writes a plain static site into outDir, servable by any web server
  * (nginx/Apache/a hosting panel) without Prepress running:
@@ -20,14 +25,14 @@
  *   draft.json               { site, brief, isSample, savedAt }   autosaved by the editor
  *   published.json           { site, files[], publishedAt }        what the last publish wrote
  *   uploads/*                media library (copied into outDir on publish)
- *   deploy.json, deploys/    deploy targets (server/deploy.ts): after Publish, the
- *                            files in outDir are pushed to other folders / SFTP servers
+ *   deploy.json, deploys/    publish targets (server/deploy.ts): after Publish, the
+ *                            files in outDir are uploaded over SFTP / FTP / S3 or to a folder
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, rmdirSync, statSync, writeFileSync, renameSync } from 'node:fs';
 import { join, extname, basename, dirname, resolve, sep } from 'node:path';
-import { ConflictError, DraftStore } from './store.ts';
+import { ConflictError, DraftStore, withFileLock } from './store.ts';
 import { createMcpHandler } from './mcp.ts';
 import { createDeployer } from './deploy.ts';
 
@@ -42,18 +47,20 @@ export interface ServerOptions {
   siteUrl?: string;
   /** Admin app HTML. When absent (dev), admin requests fall through to `next`. */
   adminHtml?: string;
-  /** Admin password. Empty = no login (only sensible on localhost). */
-  password?: string;
-  anthropicKey?: string;
-  model?: string;
+  /**
+   * Where Prepress runs. 'desktop' (the app): AI clients connect over stdio
+   * (`prepress mcp`), so the HTTP /mcp endpoint is off. 'server' (the binary on
+   * its own): AI clients connect to /mcp with the bearer token.
+   */
+  runtime?: 'desktop' | 'server';
   /** Enables server-side publish/export and the MCP endpoint. */
   engine?: Engine;
   /** Fixed bearer token for /mcp. Default: generated into <data>/mcp-token.txt. */
   mcpToken?: string;
   /** false disables the MCP endpoint. */
   mcp?: boolean;
-  /** sftp executable for remote deploys (tests use a stand-in). Default: `sftp` on PATH. */
-  sftpBin?: string;
+  /** How to start `prepress mcp` (stdio) for this site; shown in the editor. Absent in dev. */
+  stdioCommand?: { command: string; args: string[] };
 }
 
 type Next = () => void;
@@ -76,7 +83,9 @@ const MIME: Record<string, string> = {
 const UPLOAD_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.mp4', '.webm', '.mp3', '.pdf']);
 const MAX_UPLOAD = 50 * 1024 * 1024;
 const MAX_JSON = 100 * 1024 * 1024;
-const COOKIE = 'pp_session';
+
+/** Host names the server answers to (any port). Anything else is a DNS-rebinding attempt or a misrouted request. */
+const LOOPBACK = /^(?:localhost|127\.0\.0\.1|\[::1\]|[a-z0-9-]+\.localhost)(?::\d{1,5})?$/i;
 
 const SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
@@ -114,28 +123,26 @@ function send(res: ServerResponse, status: number, body: string | Buffer, type =
 const json = (res: ServerResponse, status: number, value: unknown, headers: Record<string, string> = {}) =>
   send(res, status, JSON.stringify(value), 'application/json', { 'cache-control': 'no-store', ...headers });
 
-function cookies(req: IncomingMessage): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const part of (req.headers.cookie ?? '').split(';')) {
-    const i = part.indexOf('=');
-    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
-  }
-  return out;
-}
-
 const sha = (s: string) => createHash('sha256').update(s).digest();
 
 const NOT_PUBLISHED = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Coming soon</title>
 <style>body{font:16px/1.5 system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;background:#f6f6f4;color:#1d1d1b}main{text-align:center;padding:24px}a{color:inherit}</style></head>
 <body><main><h1>Nothing published yet</h1><p>Open the <a href="/?admin=1">editor</a> to build and publish this site.</p></main></body></html>`;
 
-export function createHandler(opts: ServerOptions) {
+export type CoreOptions = Pick<ServerOptions, 'dataDir' | 'outDir' | 'siteUrl' | 'engine'>;
+
+/**
+ * Everything that works on a site's data folder without HTTP: the draft store,
+ * publishing to outDir, deploy targets, WordPress export. Shared by the HTTP
+ * server and `prepress mcp` (stdio), which may run at the same time on one folder.
+ */
+export function createSiteCore(opts: CoreOptions) {
   const dir = opts.dataDir;
   const outDir = resolve(opts.outDir ?? join(dir, 'public'));
   const uploadsDir = join(dir, 'uploads');
   const manifestFile = join(dir, 'published.json');
   const inside = (child: string, parent: string) => child === parent || child.startsWith(parent.endsWith(sep) ? parent : parent + sep);
-  // The data dir holds the password, sessions and drafts: it must never be web-served.
+  // The data dir holds drafts, deploy credentials and tokens: it must never be web-served.
   if (inside(resolve(dir), outDir)) throw new Error(`Output folder ${outDir} would publish the private data folder ${resolve(dir)}. Choose a different --out or --data.`);
   for (const d of [dir, outDir, uploadsDir]) mkdirSync(d, { recursive: true });
 
@@ -181,38 +188,19 @@ export function createHandler(opts: ServerOptions) {
     return [...now];
   }
 
-  // Session tokens are stored hashed so the file can't be replayed as cookies.
-  const sessionsFile = join(dir, 'sessions.json');
-  const sessions = new Set<string>(existsSync(sessionsFile) ? JSON.parse(readFileSync(sessionsFile, 'utf8')) : []);
-  const saveSessions = () => writeAtomic(sessionsFile, JSON.stringify([...sessions].slice(-50)));
-  const tokenId = (t: string) => sha(t).toString('hex');
-  const password = opts.password ?? '';
-  const authed = (req: IncomingMessage) => !password || sessions.has(tokenId(cookies(req)[COOKIE] ?? ''));
-
-  const isAdmin = (url: URL) => url.searchParams.get('admin') === '1';
   const store = new DraftStore(dir);
   const exportsDir = join(dir, 'exports');
-
-  const mcpEnabled = !!opts.engine && opts.mcp !== false;
-  const tokenFile = join(dir, 'mcp-token.txt');
-  const newToken = () => {
-    const t = `pp_${randomBytes(24).toString('base64url')}`;
-    writeFileSync(tokenFile, t + '\n', { mode: 0o600 });
-    return t;
-  };
-  let mcpToken = !mcpEnabled ? '' : opts.mcpToken || (existsSync(tokenFile) ? readFileSync(tokenFile, 'utf8').trim() : '') || newToken();
-
-  const bearerOk = (req: IncomingMessage) => {
-    const token = mcpToken;
-    const h = String(req.headers.authorization ?? '');
-    return !!token && h.startsWith('Bearer ') && timingSafeEqual(sha(h.slice(7).trim()), sha(token));
-  };
-
-  const deployer = createDeployer({ dataDir: dir, outDir, sftpBin: opts.sftpBin });
-  const deploy = (which?: string, full = false) => deployer.deploy(readManifest().files, which, full);
+  const deployer = createDeployer({ dataDir: dir, outDir });
+  // Publish and deploy take a lock file too: an editor server and a stdio MCP process may share this folder.
+  const publishLock = join(dir, 'publish.lock');
+  const deployFiles = (which?: string, full = false) => deployer.deploy(readManifest().files, which, full);
+  const deploy = (which?: string, full = false) => withFileLock(publishLock, () => deployFiles(which, full), 10 * 60_000);
 
   /** Render the current draft on the server, write the static site, then deploy to the auto targets. */
   async function publishSite(by: string, opt: { deploy?: boolean } = {}) {
+    return withFileLock(publishLock, () => publishLocked(by, opt), 10 * 60_000);
+  }
+  async function publishLocked(by: string, opt: { deploy?: boolean }) {
     const engine = opts.engine;
     if (!engine) throw Object.assign(new Error('Server-side publishing is not available'), { status: 501 });
     const draft = store.read();
@@ -223,7 +211,7 @@ export function createHandler(opts: ServerOptions) {
     const publishedAt = new Date().toISOString();
     writeAtomic(manifestFile, JSON.stringify({ publishedAt, outDir, files, by }));
     await store.patch({ publishedHash: engine.siteHash(draft.site) });
-    const deploys = opt.deploy === false ? [] : await deploy('auto');
+    const deploys = opt.deploy === false ? [] : await deployFiles('auto');
     return { publishedAt, outDir, siteUrl: opts.siteUrl ?? null, files: files.length, pages: Object.keys(pages), deploys };
   }
 
@@ -237,8 +225,35 @@ export function createHandler(opts: ServerOptions) {
     const res = await engine.exportSite(draft.site);
     mkdirSync(exportsDir, { recursive: true });
     writeAtomic(join(exportsDir, res.filename), Buffer.from(res.bytes));
-    return { file: res.filename, path: `/api/exports/${res.filename}`, stats: res.stats };
+    return { file: res.filename, path: `/api/exports/${res.filename}`, localPath: join(exportsDir, res.filename), stats: res.stats };
   }
+
+
+  return { dir, outDir, uploadsDir, manifestFile, exportsDir, store, deployer, readManifest, writeStatic, publishSite, exportWordPress, deploy };
+}
+
+export function createHandler(opts: ServerOptions) {
+  const core = createSiteCore(opts);
+  const { dir, outDir, uploadsDir, manifestFile, exportsDir, store, deployer, readManifest, writeStatic, publishSite, exportWordPress, deploy } = core;
+  // Writes by a `prepress mcp` process on the same folder reach open editors too.
+  store.watch();
+  const isAdmin = (url: URL) => url.searchParams.get('admin') === '1';
+  const runtime = opts.runtime ?? 'server';
+  // The desktop app's AI connection is stdio; no network endpoint needed.
+  const mcpEnabled = !!opts.engine && opts.mcp !== false && runtime !== 'desktop';
+  const tokenFile = join(dir, 'mcp-token.txt');
+  const newToken = () => {
+    const t = `pp_${randomBytes(24).toString('base64url')}`;
+    writeFileSync(tokenFile, t + '\n', { mode: 0o600 });
+    return t;
+  };
+  let mcpToken = !mcpEnabled ? '' : opts.mcpToken || (existsSync(tokenFile) ? readFileSync(tokenFile, 'utf8').trim() : '') || newToken();
+
+  const bearerOk = (req: IncomingMessage) => {
+    const token = mcpToken;
+    const h = String(req.headers.authorization ?? '');
+    return !!token && h.startsWith('Bearer ') && timingSafeEqual(sha(h.slice(7).trim()), sha(token));
+  };
 
   const mcp = mcpEnabled && opts.engine ? createMcpHandler({ store, engine: opts.engine, publishSite, exportWordPress, deploy, deployTargets: deployer.view, siteUrl: opts.siteUrl }) : null;
 
@@ -254,34 +269,14 @@ export function createHandler(opts: ServerOptions) {
     }
 
     if (route === 'GET /api/health') {
-      return json(res, 200, { ok: !!opts.anthropicKey, model: opts.model, server: true, auth: password ? authed(req) : null, siteUrl: opts.siteUrl ?? null });
+      return json(res, 200, { server: true, runtime, siteUrl: opts.siteUrl ?? null, folder: basename(resolve(dir)) });
     }
-    if (route === 'POST /api/login') {
-      const { password: given } = (await readJson(req)) ?? {};
-      if (!password) return json(res, 200, { ok: true });
-      if (typeof given !== 'string' || !timingSafeEqual(sha(given), sha(password))) {
-        await new Promise((r) => setTimeout(r, 400));
-        return json(res, 401, { error: 'Wrong password' });
-      }
-      const token = randomBytes(32).toString('hex');
-      sessions.add(tokenId(token));
-      saveSessions();
-      return json(res, 200, { ok: true }, { 'set-cookie': `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000` });
-    }
-    if (route === 'POST /api/logout') {
-      sessions.delete(tokenId(cookies(req)[COOKIE] ?? ''));
-      saveSessions();
-      return json(res, 200, { ok: true }, { 'set-cookie': `${COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0` });
-    }
-
-    // Export downloads also accept the MCP bearer token, so an AI can fetch what it exported.
-    if (req.method === 'GET' && url.pathname.startsWith('/api/exports/') && (authed(req) || bearerOk(req))) {
+    if (req.method === 'GET' && url.pathname.startsWith('/api/exports/')) {
       const file = join(exportsDir, basename(decodeURIComponent(url.pathname.slice('/api/exports/'.length))));
       if (!file.endsWith('.zip') || !existsSync(file)) return json(res, 404, { error: 'Not found' });
       return send(res, 200, readFileSync(file), 'application/zip', { 'content-disposition': `attachment; filename="${basename(file)}"` });
     }
 
-    if (!authed(req)) return json(res, 401, { error: 'Sign in required', code: 'auth' });
 
     if (route === 'GET /api/site') {
       return json(res, 200, { draft: store.read(), publishedAt: readManifest().publishedAt ?? null, outDir, siteUrl: opts.siteUrl ?? null });
@@ -310,7 +305,8 @@ export function createHandler(opts: ServerOptions) {
       return;
     }
     if (route === 'GET /api/mcp') {
-      return json(res, 200, { enabled: mcpEnabled, token: mcpEnabled ? mcpToken : null, fixed: !!opts.mcpToken });
+      if (runtime === 'desktop') return json(res, 200, { mode: 'stdio', stdio: opts.stdioCommand ?? null });
+      return json(res, 200, { mode: 'http', enabled: mcpEnabled, token: mcpEnabled ? mcpToken : null, fixed: !!opts.mcpToken });
     }
     if (route === 'POST /api/mcp/token') {
       if (!mcpEnabled) return json(res, 404, { error: 'MCP is disabled' });
@@ -372,30 +368,7 @@ export function createHandler(opts: ServerOptions) {
         .sort((a, b) => b.date - a.date);
       return json(res, 200, { items });
     }
-    if (route === 'POST /api/claude') return claude(req, res);
-
     return json(res, 404, { error: 'Not found' });
-  }
-
-  async function claude(req: IncomingMessage, res: ServerResponse) {
-    if (!opts.anthropicKey) return json(res, 500, { error: 'ANTHROPIC_API_KEY is not set' });
-    const { prompt } = (await readJson(req)) ?? {};
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'x-api-key': opts.anthropicKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({
-        model: opts.model,
-        max_tokens: 16000,
-        system: 'You produce machine-readable JSON for a website builder. Reply with one JSON value only.',
-        messages: [{ role: 'user', content: String(prompt ?? '') }],
-      }),
-    });
-    const j: any = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      return json(res, r.status, { error: j?.error?.message ?? 'Anthropic API error', code: r.status === 429 ? 'rate_limited' : 'upstream_error' });
-    }
-    const text = (j.content ?? []).filter((c: any) => c.type === 'text').map((c: any) => c.text).join('');
-    return json(res, 200, { text });
   }
 
   // ---------- public site ----------
@@ -426,6 +399,7 @@ export function createHandler(opts: ServerOptions) {
 
   return async function handle(req: IncomingMessage, res: ServerResponse, next?: Next) {
     const url = new URL(req.url ?? '/', 'http://localhost');
+    if (!LOOPBACK.test(String(req.headers.host ?? ''))) return send(res, 421, 'Prepress only answers on localhost / 127.0.0.1');
     try {
       if (url.pathname === '/mcp') {
         if (!mcp) return json(res, 404, { error: 'MCP is disabled on this server' });

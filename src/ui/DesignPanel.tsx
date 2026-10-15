@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Check } from 'lucide-react';
 import type { Design, PaletteSlug } from '../lib/types';
 import { PALETTE_SLUGS } from '../lib/types';
 import { FONTS, PALETTE_NAMES, contrastRatio, textOn } from '../lib/wp/design';
@@ -56,7 +57,7 @@ export function DesignPanel({ design, onChange }: Props) {
       <div className="field" style={{ gap: 4 }}>
         {checks.map((c) => (
           <div key={c.label} className={`contrast ${c.ratio >= c.min ? 'ok' : 'warn'}`}>
-            {c.label}: {c.ratio.toFixed(1)}:1 {c.ratio >= c.min ? '✓' : `· aim for ${c.min}:1`}
+            {c.label}: {c.ratio.toFixed(1)}:1 {c.ratio >= c.min ? <Check size={13} aria-label="passes" /> : `· aim for ${c.min}:1`}
           </div>
         ))}
       </div>

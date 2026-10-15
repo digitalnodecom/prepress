@@ -1,6 +1,6 @@
 {
   "name": "prepress",
-  "version": "0.4.0",
+  "version": "0.6.0",
   "description": "Build a website in the WordPress block editor, serve it, export it to WordPress.",
   "scripts": {
     "test": "vitest run",
@@ -9,7 +9,9 @@
     "build:bin": "npm run build && node scripts/binary.mjs",
     "build:bin:all": "npm run build && node scripts/binary.mjs --all",
     "start": "bun server/main.ts",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "desktop": "node scripts/desktop.mjs dev",
+    "build:desktop": "npm run build:bin && node scripts/desktop.mjs build"
   },
   "keywords": [],
   "author": "",
@@ -29,15 +31,19 @@
     "@wordpress/icons": "11.7.1",
     "@wordpress/keyboard-shortcuts": "5.40.1",
     "@wordpress/style-engine": "2.40.1",
+    "basic-ftp": "6.2.1",
     "jsdom": "^29.1.1",
     "jszip": "^3.10.2",
+    "lucide-react": "1.49.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "ssh2": "1.17.0"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
+    "@types/ssh2": "1.15.6",
     "@vitejs/plugin-react": "^6.1.2",
     "bun": "^1.4.3",
     "typescript": "^7.0.2",
