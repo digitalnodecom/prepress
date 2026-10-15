@@ -10,11 +10,16 @@
  *
  *   GET  /api/v1/library/items?type=&q=&limit=&offset=   list (no payloads)
  *   GET  /api/v1/library/items/:id[?import=1]             one item with payload
- *   POST /api/v1/library/items              {token, type, title, description, tags, payload, preview}
+ *   POST /api/v1/library/items              {token, type, title, description, tags, uses?, payload, preview}
  *   POST /api/v1/library/items/:id          {token, …}  update (owner)
  *   POST /api/v1/library/items/:id/delete   {token}     (owner)
  *   POST /api/v1/library/items/:id/report   {reason}
- *   POST /api/v1/library/items/:id/moderate {admin, action: hide|unhide|delete}
+ *   POST /api/v1/library/items/:id/moderate {admin, action: hide|unhide|delete|official|unofficial}
+ *
+ * `uses` lists the library items an item is built from (a template from its
+ * patterns, a pattern from its blocks and style); item pages show it as
+ * "Built with" and the reverse as "Used in". `official` ("By Prepress") is
+ * set by a moderator only, and official items can't be hidden by reports.
  *   GET  /library/preview/:id                            the preview page
  */
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
@@ -34,6 +39,10 @@ export interface ItemMeta {
   createdAt: string;
   updatedAt: string;
   imports: number;
+  /** Ids of the library items this one is built from. */
+  uses?: string[];
+  /** Published by Prepress itself (moderator flag). */
+  official?: boolean;
   /** Hidden by moderation or by reports. */
   hidden?: boolean;
   ownerHash: string;
@@ -50,6 +59,7 @@ export interface LibraryHelpers {
   now(): number;
 }
 
+const MAX_USES = 30;
 const MAX_PAYLOAD = 1_500_000;
 const MAX_PREVIEW = 1_500_000;
 const REPORTS_TO_HIDE = 3;
@@ -100,8 +110,16 @@ export function createLibrary(dataDir: string, h: LibraryHelpers, opts: { adminT
       if (size > MAX_PAYLOAD) h.fail(413, `The item is too large (${Math.round(size / 1000)} kB, max ${MAX_PAYLOAD / 1000} kB)`);
     }
     if ((!partial || b.preview !== undefined) && (typeof b.preview !== 'string' || b.preview.length > MAX_PREVIEW)) h.fail(400, 'preview must be an HTML page (max 1.5 MB)');
+    let uses: string[] | undefined;
+    if (b.uses !== undefined) {
+      if (!Array.isArray(b.uses)) h.fail(400, 'uses must be a list of library item ids');
+      const ids: string[] = [...new Set<string>(b.uses.map(String))].slice(0, MAX_USES);
+      const missing = ids.filter((u) => !ID.test(u) || !index[u]);
+      if (missing.length) h.fail(400, `uses: no such library item ${missing.slice(0, 3).join(', ')}`);
+      uses = ids;
+    }
     const tags = (Array.isArray(b.tags) ? b.tags : []).map((t: unknown) => clean(t, 24).toLowerCase()).filter(Boolean).slice(0, 6);
-    return { type, title, description: clean(b.description, 400), tags, payload, preview: b.preview as string | undefined };
+    return { type, title, description: clean(b.description, 400), tags, uses, payload, preview: b.preview as string | undefined };
   }
 
   function owned(id: string, token: unknown): ItemMeta {
@@ -111,6 +129,7 @@ export function createLibrary(dataDir: string, h: LibraryHelpers, opts: { adminT
     return m;
   }
 
+  const isAdmin = (token: unknown) => !!opts.adminToken && typeof token === 'string' && timingSafeEqual(Buffer.from(hash(token)), Buffer.from(hash(opts.adminToken)));
   const counted = new Map<string, number>();
   const visible = () => Object.values(index).filter((m) => !m.hidden);
 
@@ -121,6 +140,7 @@ export function createLibrary(dataDir: string, h: LibraryHelpers, opts: { adminT
     const offset = Math.max(0, Number(q.get('offset') ?? 0) || 0);
     let items = visible();
     if (type && TYPES.includes(type as ItemType)) items = items.filter((m) => m.type === type);
+    if (q.get('official') === '1') items = items.filter((m) => m.official);
     if (text) items = items.filter((m) => `${m.title} ${m.description} ${m.tags.join(' ')}`.toLowerCase().includes(text));
     const sort = q.get('sort') === 'popular' ? (a: ItemMeta, b: ItemMeta) => b.imports - a.imports : (a: ItemMeta, b: ItemMeta) => b.updatedAt.localeCompare(a.updatedAt);
     items.sort(sort);
@@ -132,6 +152,14 @@ export function createLibrary(dataDir: string, h: LibraryHelpers, opts: { adminT
     if (!m || m.hidden) return null;
     const payload = JSON.parse(readFileSync(join(dir, `${id}.json`), 'utf8'));
     return { ...publicMeta(m), payload };
+  }
+
+  /** What an item is built from and what is built from it (visible items only). */
+  function related(id: string) {
+    const brief = (m: ItemMeta) => ({ id: m.id, type: m.type, title: m.title, official: !!m.official });
+    const uses = (index[id]?.uses ?? []).map((u) => index[u]).filter((m) => m && !m.hidden).map(brief);
+    const usedIn = visible().filter((m) => m.uses?.includes(id)).map(brief);
+    return { uses, usedIn };
   }
 
   /** Library API routes; returns null when the path isn't the library's. */
@@ -183,7 +211,8 @@ export function createLibrary(dataDir: string, h: LibraryHelpers, opts: { adminT
     if (!id) {
       const b = await h.body(req, 4_000_000);
       if (typeof b.token !== 'string' || b.token.length < 32) h.fail(401, 'Missing site token');
-      h.limit(`publish:${h.clientIp(req)}`, 10, 3_600_000);
+      // Moderators (seeding official sets) skip the publish rate limit.
+      if (!isAdmin(req.headers['x-admin-token'])) h.limit(`publish:${h.clientIp(req)}`, 10, 3_600_000);
       const v = validate(b);
       let newId = '';
       do newId = randomBytes(8).toString('base64url').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10).padEnd(10, '0');
@@ -191,7 +220,7 @@ export function createLibrary(dataDir: string, h: LibraryHelpers, opts: { adminT
       const t = new Date(h.now()).toISOString();
       write(join(dir, `${newId}.json`), JSON.stringify(v.payload));
       write(join(dir, `${newId}.html`), v.preview!);
-      index[newId] = { id: newId, type: v.type, title: v.title, description: v.description, tags: v.tags, createdAt: t, updatedAt: t, imports: 0, ownerHash: hash(b.token), reports: [] };
+      index[newId] = { id: newId, type: v.type, title: v.title, description: v.description, tags: v.tags, createdAt: t, updatedAt: t, imports: 0, ownerHash: hash(b.token), reports: [], ...(v.uses?.length ? { uses: v.uses } : {}) };
       save();
       return [201, { id: newId, url: `/library/${newId}` }];
     }
@@ -204,14 +233,17 @@ export function createLibrary(dataDir: string, h: LibraryHelpers, opts: { adminT
 
     if (action === 'moderate') {
       const b = await h.body(req, 8_000);
-      if (!opts.adminToken || typeof b.admin !== 'string' || !timingSafeEqual(Buffer.from(hash(b.admin)), Buffer.from(hash(opts.adminToken)))) h.fail(403, 'Not allowed');
+      if (!isAdmin(b.admin)) h.fail(403, 'Not allowed');
       const meta = index[id];
       if (!meta) h.fail(404, 'No such library item');
       if (b.action === 'delete') return [200, remove(id)];
-      meta.hidden = b.action === 'hide';
-      if (b.action === 'unhide') meta.reports = [];
+      if (b.action === 'official' || b.action === 'unofficial') meta.official = b.action === 'official';
+      else if (b.action === 'hide' || b.action === 'unhide') {
+        meta.hidden = b.action === 'hide';
+        if (b.action === 'unhide') meta.reports = [];
+      } else h.fail(400, 'action must be hide, unhide, delete, official or unofficial');
       save();
-      return [200, { ok: true, hidden: meta.hidden }];
+      return [200, { ok: true, hidden: !!meta.hidden, official: !!meta.official }];
     }
 
     const b = await h.body(req, 4_000_000);
@@ -221,6 +253,7 @@ export function createLibrary(dataDir: string, h: LibraryHelpers, opts: { adminT
     if (b.title !== undefined) meta.title = v.title;
     if (b.description !== undefined) meta.description = v.description;
     if (b.tags !== undefined) meta.tags = v.tags;
+    if (v.uses !== undefined) meta.uses = v.uses.filter((u) => u !== id);
     if (b.payload !== undefined) write(join(dir, `${id}.json`), JSON.stringify(v.payload));
     if (b.preview !== undefined) write(join(dir, `${id}.html`), v.preview!);
     meta.updatedAt = new Date(h.now()).toISOString();
@@ -235,7 +268,7 @@ export function createLibrary(dataDir: string, h: LibraryHelpers, opts: { adminT
     if (!meta) h.fail(404, 'No such library item');
     const who = hash(`report:${ip}`).slice(0, 16);
     if (!meta.reports.includes(who)) meta.reports.push(who);
-    if (meta.reports.length >= REPORTS_TO_HIDE) meta.hidden = true;
+    if (meta.reports.length >= REPORTS_TO_HIDE && !meta.official) meta.hidden = true;
     console.log(`library report ${id} (${meta.reports.length}): ${clean(reason, 200)}`);
     save();
   }
@@ -248,7 +281,7 @@ export function createLibrary(dataDir: string, h: LibraryHelpers, opts: { adminT
     return { deleted: id };
   }
 
-  return { route, list, get, report, count: () => visible().length };
+  return { route, list, get, related, report, count: () => visible().length };
 }
 
 export type Library = ReturnType<typeof createLibrary>;

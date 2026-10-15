@@ -8,7 +8,7 @@ import { AI_BLOCKS } from '../wp/normalize';
 import { PATTERNS, patternCatalogForPrompt } from '../wp/patterns';
 import { pageUrl } from '../wp/render';
 
-const FONT_KEYS = Object.keys(FONTS).filter((k) => k !== 'system');
+const FONT_KEYS = Object.keys(FONTS).filter((k) => k !== 'system' && !FONTS[k].mono);
 
 export function planPrompt(brief: string) {
   return `You are the lead designer of a website builder whose output becomes a WordPress block theme.

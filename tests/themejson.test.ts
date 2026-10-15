@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { buildThemeJson, cleanThemeJsonPatch, compileGlobalStyles, sanitizeDesign } from '../src/lib/wp/design';
+import { buildThemeJson, cleanThemeJsonPatch, compileGlobalStyles, googleFontsUrl, sanitizeDesign } from '../src/lib/wp/design';
 import { patchThemeJson, resetThemeJson } from '../src/lib/site';
 import type { Site } from '../src/lib/types';
 
@@ -38,5 +38,21 @@ describe('theme.json patch', () => {
     expect(() => cleanThemeJsonPatch([])).toThrow(/must be an object/);
     expect(() => cleanThemeJsonPatch({ styles: { css: '</style><script>x</script>' } })).toThrow(/HTML/);
     expect(() => cleanThemeJsonPatch({ big: 'x'.repeat(300 * 1024) })).toThrow(/too large/);
+  });
+});
+
+describe('mono font slot', () => {
+  test('defaults to system mono, only accepts mono faces, always emits a "mono" family', () => {
+    const old = sanitizeDesign({ headingFont: 'syne', bodyFont: 'inter' } as any);
+    expect(old.monoFont).toBe('system-mono');
+    expect(sanitizeDesign({ monoFont: 'inter' } as any).monoFont).toBe('system-mono');
+    const d = sanitizeDesign({ headingFont: 'fraunces', bodyFont: 'newsreader', monoFont: 'ibm-plex-mono' } as any);
+    const fams: any[] = (buildThemeJson(d) as any).settings.typography.fontFamilies;
+    expect(fams.map((f) => f.slug)).toEqual(['heading', 'body', 'mono']);
+    expect(fams[2].fontFamily).toContain('IBM Plex Mono');
+    expect(googleFontsUrl(d)).toContain('family=IBM+Plex+Mono');
+    expect((buildThemeJson(old) as any).settings.typography.fontFamilies.map((f: any) => f.slug)).toEqual(['heading', 'body', 'mono']);
+    expect(googleFontsUrl(old)).not.toContain('Mono');
+    expect(compileGlobalStyles(d)).toContain('--wp--preset--font-family--mono');
   });
 });

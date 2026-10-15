@@ -393,6 +393,7 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 0; width: 100%; }
 .library-search input { border: 0; background: none; color: var(--fg); font: inherit; font-size: 14px; flex: 1; outline: none; }
 .library-card { cursor: default; }
 .library-card .pill { align-self: flex-start; margin: 0 4px; }
+.library-pills { gap: 0; }
 .library-card a { color: inherit; }
 .library-actions { padding: 4px 4px 0; gap: 6px; align-items: center; }
 .library-share { display: flex; flex-direction: column; gap: 12px; }

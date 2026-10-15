@@ -174,6 +174,10 @@ export interface LibraryMeta {
   updatedAt: string;
   imports: number;
   hidden?: boolean;
+  /** Published by Prepress ("By Prepress"). */
+  official?: boolean;
+  /** Ids of the library items this one is built from. */
+  uses?: string[];
 }
 export interface LibraryList {
   base: string;

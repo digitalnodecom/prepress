@@ -14,10 +14,11 @@ export { toMarkup, markupToNodes, validateMarkup, splitSections, joinSections } 
 export { renderPage, pageUrl } from './wp/render';
 export { exportSite, themeSlug } from './wp/export';
 export { patternCatalogForPrompt, expandPattern, PATTERNS } from './wp/patterns';
-export { buildThemeJson, sanitizeDesign, FONTS, FONT_SIZES, SPACING_SIZES } from './wp/design';
+export { buildThemeJson, sanitizeDesign, FONTS, TEXT_FONT_KEYS, MONO_FONT_KEYS, FONT_SIZES, SPACING_SIZES } from './wp/design';
 export { generateSite } from './ai/generate';
 export { DEMO_BRIEF } from './ai/demo';
 export { STARTERS, buildStarter, starterCatalog } from './starters';
+export { buildLibrarySet } from './librarySets';
 export { shareTemplate, shareSections, sharePattern, shareBlock, shareStyle, importLibraryItem, siteValidity, LIBRARY_TYPES } from './library';
 export { externalMediaUrls, replaceMediaUrls, siteMarkups, isExternalMedia } from './wp/media';
 export { ensureBlocks } from './wp/registry';

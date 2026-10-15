@@ -211,6 +211,9 @@ function renderChildren(block: RawBlock, ctx: Ctx): { html: string; first: strin
   return { html: parts.join(''), first: block.innerContent[0] === null ? null : first };
 }
 
+/** Navigation keeps its typography and colours inline; spacing (blockGap) goes through the layout. */
+const navStyle = (style: any) => (style?.typography || style?.color ? { typography: style.typography, color: style.color } : undefined);
+
 function renderNavigation(block: RawBlock, ctx: Ctx): string {
   const a = block.attrs;
   const vertical = a.layout?.orientation === 'vertical';
@@ -219,7 +222,7 @@ function renderNavigation(block: RawBlock, ctx: Ctx): string {
   if (vertical) extra.push('is-vertical');
   if (justify) extra.push(`items-justified-${justify}`);
   const items = block.innerBlocks.map((b) => renderBlock(b, ctx)).join('');
-  const nav = `<nav ${wrapper('core/navigation', { ...a, style: undefined }, extra)} aria-label="Menu"><ul class="wp-block-navigation__container ${extra.join(' ')} wp-block-navigation">${items}</ul></nav>`;
+  const nav = `<nav ${wrapper('core/navigation', { ...a, style: navStyle(a.style) }, extra)} aria-label="Menu"><ul ${wrapper('core/navigation', { fontSize: a.fontSize, style: navStyle(a.style) }, ['wp-block-navigation__container', ...extra]).replace('class="wp-block-navigation ', 'class="')}>${items}</ul></nav>`;
   return applyLayout(block, nav, null, ctx);
 }
 

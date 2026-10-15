@@ -57,6 +57,8 @@ export interface LibraryItem {
   createdAt: string;
   updatedAt: string;
   imports?: number;
+  official?: boolean;
+  uses?: string[];
 }
 
 // ---------- building ----------

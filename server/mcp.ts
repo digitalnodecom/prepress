@@ -216,7 +216,8 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
           fontFamilies: (tj.settings?.typography?.fontFamilies ?? []).map((f: any) => f.slug),
           spacing: (tj.settings?.spacing?.spacingSizes ?? []).map((s: any) => `var:preset|spacing|${s.slug}`),
         },
-        fonts: Object.keys(e.FONTS),
+        fonts: e.TEXT_FONT_KEYS,
+        monoFonts: e.MONO_FONT_KEYS,
       };
     }, true);
 
@@ -367,8 +368,8 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
 
     tool(
       'set_design',
-      'Change design tokens: palette (base, contrast, primary, secondary, accent, muted as hex), headingFont/bodyFont (see get_block_catalog.fonts), radius (none|soft|round), contentSize/wideSize. Restyles all content.',
-      { palette: z.record(z.string(), z.string()).optional(), headingFont: z.string().optional(), bodyFont: z.string().optional(), radius: z.enum(['none', 'soft', 'round']).optional(), contentSize: z.string().optional(), wideSize: z.string().optional() },
+      'Change design tokens: palette (base, contrast, primary, secondary, accent, muted as hex), headingFont/bodyFont (see get_block_catalog.fonts), monoFont (get_block_catalog.monoFonts; preset font family "mono" for datelines, numbers, code), radius (none|soft|round), contentSize/wideSize. Restyles all content.',
+      { palette: z.record(z.string(), z.string()).optional(), headingFont: z.string().optional(), bodyFont: z.string().optional(), monoFont: z.string().optional(), radius: z.enum(['none', 'soft', 'round']).optional(), contentSize: z.string().optional(), wideSize: z.string().optional() },
       (args) =>
         change('Changed the design', (site) => {
           const d = e.sanitizeDesign({ ...site.design, ...args, palette: { ...site.design.palette, ...(args.palette ?? {}) } });
@@ -519,7 +520,7 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
       { type: z.enum(['template', 'pattern', 'block', 'style']).optional(), query: z.string().optional(), sort: z.enum(['recent', 'popular']).optional() },
       async ({ type, query, sort }) => {
         const r = await lib().search({ type, q: query, sort, limit: 30 });
-        return { total: r.total, items: r.items.map((i: any) => ({ id: i.id, type: i.type, title: i.title, description: i.description, tags: i.tags, imports: i.imports, page: lib().pageUrl(i.id) })) };
+        return { total: r.total, items: r.items.map((i: any) => ({ id: i.id, type: i.type, title: i.title, description: i.description, tags: i.tags, imports: i.imports, ...(i.official ? { official: true } : {}), page: lib().pageUrl(i.id) })) };
       },
       true,
     );

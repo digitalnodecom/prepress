@@ -4,6 +4,22 @@ This file is for the next agent or developer picking up this project. It explain
 
 Last updated: 2026-10-14 · Version: v0.3 · Target: WordPress 7.0
 
+## v0.10 — mono font slot + library set #2: Paper Edition
+
+- **Mono slot:** `Design.monoFont` (optional; `sanitizeDesign` defaults it to `system-mono`, only `FONTS` entries with `mono: true` qualify). `buildThemeJson` always emits a `mono` font family, so `var(--wp--preset--font-family--mono)` / `fontFamily: "mono"` work on every site; `googleFontsUrl` loads it. New faces: Newsreader, IBM Plex Mono, JetBrains Mono, DM Mono, Space Mono, System Mono; Fraunces now loads italics and weight 300. Styles panel has a Mono select (heading/body selects list only text faces); MCP `set_design` takes `monoFont`, `get_block_catalog` lists `monoFonts`.
+- **Paper Edition** (`library-sets/paper/`): warm paper, ink, oxblood; Fraunces / Newsreader / IBM Plex Mono on a 680px measure. Blocks `prepress/paper-masthead|lede|pullquote|note|byline|ornament|index-row|engraving` (drop cap via `initial-letter` with a float fallback; sidenotes sit after their paragraph and hang in the margin at ≥1180px; dot-leader index rows; five generated line-art engravings with no SVG ids). 10 patterns + header/footer; template *The Margin* (Home, Essays, On slow software, About, Subscribe).
+- `library-sets/index.ts` is the set registry used by `qa-set.ts`, `seed-library.ts` and `tests/librarySets.test.ts` (which now runs every check for every set, including the export's `mono` family).
+- Live: 40 official items (Paper template `zi4wwurgev`); demo `the-margin.prepress.digitalno.de` published from a scratch site (token in that scratch folder).
+
+## v0.9 — official library set #1: Kinetic Grotesk
+
+- `library-sets/kinetic/`: style (paper/ink/acid, Syne + Inter, display/mega/statement sizes, grain, focus, reduced-motion kill switch), 8 dynamic blocks (`prepress/kinetic-marquee|display|index-row|label|stat|wordmark|shape|pill`, CSS namespaced, pure-CSS motion behind reduced-motion + `@supports` guards), 10 patterns + header/footer, template *Kinetic Studio* (Home, Work, Studio, Contact). `buildLibrarySet()` turns it into a site and 20 library drafts with lineage.
+- Library API: `uses` (validated ids, max 30) and `official` (moderate action `official|unofficial`); item pages show **Built with** / **Used in**; library list has a **By Prepress** filter and badges (also in the editor's Library dialog and MCP `library_search`). Moderators skip the publish rate limit (`x-admin-token`), official items can't be hidden by reports.
+- `scripts/seed-library.ts` publishes a set bottom-up (idempotent), `scripts/qa-set.ts` renders pages/items with headless Chrome (reduced motion by default; `server/screenshot.ts` got a `reducedMotion` option).
+- Renderer fix: navigation keeps its typography/colour styles and font-size class on `<nav>` and `<ul>` (were dropped; the theme's `.wp-block-navigation` rule also hit the `<ul>`). Re-publish sites to pick it up.
+- Live: 20 official items on /library (template `pdmcvfg8tt`), demo published to `kinetic-studio.prepress.digitalno.de` from a scratch site (its hosting token lives in that scratch folder; release the name if not wanted).
+- Follow-ups: more sets (Night Garden, Paper Edition), official templates in the New-site dialog, a mono font slot.
+
 ## v0.8 — library + homepage (prepress.digitalno.de)
 
 - **Homepage** (`hosting/pages.ts`, served by the hosting API): logo, explanation, cards for Web version (coming soon until `WEB_URL` is set), Desktop app (`DOWNLOAD_MAC_URL` → `_downloads/Prepress-mac-arm64.dmg` in the bucket), Library; note about `*.prepress.digitalno.de`.

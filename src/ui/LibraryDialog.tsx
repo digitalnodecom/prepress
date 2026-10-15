@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ExternalLink, Library as LibraryIcon, Search, Share2, Trash2, X } from 'lucide-react';
+import { BadgeCheck, ExternalLink, Library as LibraryIcon, Search, Share2, Trash2, X } from 'lucide-react';
 import type { Site } from '../lib/types';
 import { getSections, sectionLabel } from '../lib/site';
 import { shareBlock, sharePattern, shareSections, shareStyle, shareTemplate, type LibraryDraft } from '../lib/library';
@@ -128,7 +128,10 @@ export function LibraryDialog({ site, pageId, brief, onImport, onClose }: Props)
                     <div className="starter-thumb">
                       <iframe src={`${list.base}/library/preview/${m.id}`} sandbox="" loading="lazy" tabIndex={-1} title="" />
                     </div>
-                    <span className="pill neutral">{TYPE_LABEL[m.type]}</span>
+                    <span className="row library-pills">
+                      <span className="pill neutral">{TYPE_LABEL[m.type]}</span>
+                      {m.official && <span className="pill accent" title="Published by Prepress"><BadgeCheck size={12} /> By Prepress</span>}
+                    </span>
                     <span className="starter-title">{m.title}</span>
                     {m.description && <span className="starter-desc">{m.description}</span>}
                     <span className="hint">{m.imports} import{m.imports === 1 ? '' : 's'} · <a href={`${list.base}/library/${m.id}`} target="_blank" rel="noreferrer">Details <ExternalLink size={12} /></a></span>

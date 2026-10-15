@@ -204,4 +204,24 @@ describe('library API and Prepress', () => {
     }
     expect((await fetch(`${apiBase}/library/zzzzzzzzzz`)).status).toBe(404);
   });
+
+  test('lineage: uses must exist, item pages link both ways; only a moderator marks official', async () => {
+    const style = (await apiPost('/api/v1/library/items', { token: A, type: 'style', title: 'Base style', payload: { style: { design: {} } }, preview: '<!doctype html>' })).body.id;
+    expect((await apiPost('/api/v1/library/items', { token: A, type: 'pattern', title: 'Bad', uses: ['zzzzzzzzzz'], payload: { pattern: { title: 'x', content: '', blocks: [] } }, preview: '<!doctype html>' })).status).toBe(400);
+    const pat = (await apiPost('/api/v1/library/items', { token: A, type: 'pattern', title: 'Child pattern', uses: [style, style], payload: { pattern: { title: 'x', content: '', blocks: [] } }, preview: '<!doctype html>' })).body.id;
+    expect((await (await fetch(`${apiBase}/api/v1/library/items/${pat}`)).json()).uses).toEqual([style]);
+    expect(await (await fetch(`${apiBase}/library/${pat}`)).text()).toMatch(/Built with[\s\S]*Base style/);
+    expect(await (await fetch(`${apiBase}/library/${style}`)).text()).toMatch(/Used in[\s\S]*Child pattern/);
+
+    expect((await apiPost(`/api/v1/library/items/${style}`, { token: A, official: true, title: 'Base style' })).status).toBe(200);
+    expect((await (await fetch(`${apiBase}/api/v1/library/items/${style}`)).json()).official).toBeUndefined();
+    expect((await apiPost(`/api/v1/library/items/${style}/moderate`, { admin: 'wrong', action: 'official' })).status).toBe(403);
+    expect((await apiPost(`/api/v1/library/items/${style}/moderate`, { admin: 'admin-secret', action: 'official' })).body.official).toBe(true);
+    const official = await (await fetch(`${apiBase}/api/v1/library/items?official=1`)).json();
+    expect(official.items.map((i: any) => i.id)).toEqual([style]);
+    expect(await (await fetch(`${apiBase}/library?official=1`)).text()).toContain('By Prepress');
+    // Reports can't hide an official item.
+    for (const ip of ['203.0.113.1', '203.0.113.2', '203.0.113.3']) await apiPost(`/api/v1/library/items/${style}/report`, { reason: 'x' }, ip);
+    expect((await fetch(`${apiBase}/api/v1/library/items/${style}`)).status).toBe(200);
+  });
 });

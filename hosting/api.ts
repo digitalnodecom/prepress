@@ -199,7 +199,7 @@ export function createHostingApi(cfg: HostingConfig) {
     const itemPath = u.pathname.match(/^\/library\/([a-z0-9]{10})(\/report)?$/);
     if (itemPath && req.method === 'GET' && !itemPath[2]) {
       const item = library.get(itemPath[1]);
-      return item ? html(res, 200, itemPage(item)) : html(res, 404, libraryPage(library, new URLSearchParams()));
+      return item ? html(res, 200, itemPage(item, library.related(item.id))) : html(res, 404, libraryPage(library, new URLSearchParams()));
     }
     if (itemPath && req.method === 'POST' && itemPath[2]) {
       library.report(itemPath[1], clientIp(req), 'web form');

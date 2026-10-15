@@ -32,6 +32,8 @@ export interface Design {
   palette: Record<PaletteSlug, string>;
   headingFont: string; // key into FONTS
   bodyFont: string; // key into FONTS
+  /** Mono slot (datelines, numbers, code): a key into FONTS with `mono`. Older designs lack it → system mono. */
+  monoFont?: string;
   radius: Radius;
   contentSize: string;
   wideSize: string;

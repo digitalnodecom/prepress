@@ -24,6 +24,7 @@ const ICON = {
   library: '<path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/>',
   arrow: '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
   search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  badge: '<path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/>',
 };
 const icon = (k: keyof typeof ICON, size = 20) => `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
 
@@ -48,6 +49,8 @@ a.card:hover{border-color:var(--accent)}.card .ic{color:var(--accent)}.card h2{f
 .detail{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:24px}.detail iframe{width:100%;height:72vh;border:1px solid var(--line);border-radius:12px;background:#fff}
 .side{display:flex;flex-direction:column;gap:12px}.side h1{font-size:24px;margin:0}.side p{margin:0;color:var(--fg2)}.side code{font:14px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:2px 6px}
 .box{border:1px solid var(--line);border-radius:12px;background:var(--card);padding:14px;font-size:14px;color:var(--fg2)}.box b{color:var(--fg)}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--accent-fg);background:var(--accent);border-radius:999px;padding:2px 8px;margin-left:6px;vertical-align:middle}.badge .ic{color:inherit}
+.links{display:flex;flex-direction:column;gap:6px;margin:6px 0 0;padding:0;list-style:none}.links a{text-decoration:none;color:var(--fg)}.links a:hover{text-decoration:underline}.links .pill{margin-right:6px}
 .empty{color:var(--fg3);padding:40px 0;text-align:center}
 @media (max-width:800px){.detail{grid-template-columns:1fr}.bar form{margin-left:0;width:100%}.bar input{flex:1}}`;
 
@@ -74,34 +77,42 @@ export function homePage(cfg: PageConfig, libraryCount: number): string {
 const TYPE_LABEL: Record<string, string> = { template: 'Template', pattern: 'Pattern', block: 'Block', style: 'Style' };
 const TYPE_PLURAL: Record<string, string> = { template: 'Templates', pattern: 'Patterns', block: 'Blocks', style: 'Styles' };
 
+const badge = (on?: boolean) => (on ? `<span class="badge" title="Published by Prepress">${icon('badge', 12)}By Prepress</span>` : '');
+
 const top = `<div class="top"><a href="/">${LOGO}<span>Prepress</span></a><span class="meta">/ <a href="/library">Library</a></span></div>`;
 
 export function libraryPage(lib: Library, q: URLSearchParams): string {
   const type = q.get('type') ?? '';
   const text = q.get('q') ?? '';
-  const { items, total } = lib.list(new URLSearchParams({ type, q: text, limit: '60', sort: q.get('sort') ?? '' }));
-  const link = (t: string, label: string) => `<a class="${type === t ? 'on' : ''}" href="/library${t ? `?type=${t}` : ''}">${label}</a>`;
+  const official = q.get('official') === '1';
+  const { items, total } = lib.list(new URLSearchParams({ type, q: text, limit: '60', sort: q.get('sort') ?? '', official: official ? '1' : '' }));
+  const link = (t: string, label: string) => `<a class="${type === t && !official ? 'on' : ''}" href="/library${t ? `?type=${t}` : ''}">${label}</a>`;
   const cards = items
     .map(
       (m) =>
-        `<a class="item" href="/library/${m.id}"><div class="thumb"><iframe src="/library/preview/${m.id}" sandbox loading="lazy" tabindex="-1" title=""></iframe></div><span class="meta"><span class="pill">${esc(TYPE_LABEL[m.type])}</span></span><b>${esc(m.title)}</b><span class="meta">${esc(m.description).slice(0, 120)}</span></a>`,
+        `<a class="item" href="/library/${m.id}"><div class="thumb"><iframe src="/library/preview/${m.id}" sandbox loading="lazy" tabindex="-1" title=""></iframe></div><span class="meta"><span class="pill">${esc(TYPE_LABEL[m.type])}</span>${badge(m.official)}</span><b>${esc(m.title)}</b><span class="meta">${esc(m.description).slice(0, 120)}</span></a>`,
     )
     .join('');
   return page(
     'Library — Prepress',
-    `<main>${top}<div class="bar">${link('', 'All')}${['template', 'pattern', 'block', 'style'].map((t) => link(t, TYPE_PLURAL[t])).join('')}<form action="/library">${type ? `<input type="hidden" name="type" value="${esc(type)}">` : ''}${icon('search', 16)}<input name="q" value="${esc(text)}" placeholder="Search" aria-label="Search"></form></div>
+    `<main>${top}<div class="bar">${link('', 'All')}${['template', 'pattern', 'block', 'style'].map((t) => link(t, TYPE_PLURAL[t])).join('')}<a class="${official ? 'on' : ''}" href="/library?official=1">By Prepress</a><form action="/library">${type ? `<input type="hidden" name="type" value="${esc(type)}">` : ''}${icon('search', 16)}<input name="q" value="${esc(text)}" placeholder="Search" aria-label="Search"></form></div>
 ${items.length ? `<div class="grid">${cards}</div>` : `<p class="empty">${total ? '' : 'Nothing here yet. Share something from Prepress: Library → Share.'}</p>`}</main>`,
     'Templates, patterns, blocks and styles for Prepress.',
   );
 }
 
-export function itemPage(m: Omit<ItemMeta, 'ownerHash' | 'reports' | 'hidden'>): string {
+type Brief = { id: string; type: string; title: string; official: boolean };
+const linkList = (heading: string, items: Brief[]) =>
+  items.length ? `<div class="box"><b>${heading}</b><ul class="links">${items.map((r) => `<li><a href="/library/${esc(r.id)}"><span class="pill">${esc(TYPE_LABEL[r.type])}</span>${esc(r.title)}</a></li>`).join('')}</ul></div>` : '';
+
+export function itemPage(m: Omit<ItemMeta, 'ownerHash' | 'reports' | 'hidden'>, rel: { uses: Brief[]; usedIn: Brief[] } = { uses: [], usedIn: [] }): string {
   return page(
     `${m.title} — Prepress library`,
     `<main>${top}<div class="detail"><iframe src="/library/preview/${m.id}" sandbox title="Preview of ${esc(m.title)}"></iframe>
-<aside class="side"><span class="pill">${esc(TYPE_LABEL[m.type])}</span><h1>${esc(m.title)}</h1>${m.description ? `<p>${esc(m.description)}</p>` : ''}
+<aside class="side"><span><span class="pill">${esc(TYPE_LABEL[m.type])}</span>${badge(m.official)}</span><h1>${esc(m.title)}</h1>${m.description ? `<p>${esc(m.description)}</p>` : ''}
 ${m.tags.length ? `<p class="meta">${m.tags.map((t) => `#${esc(t)}`).join(' ')}</p>` : ''}
 <p class="meta">Updated ${esc(m.updatedAt.slice(0, 10))} · ${m.imports} import${m.imports === 1 ? '' : 's'}</p>
+${linkList('Built with', rel.uses)}${linkList('Used in', rel.usedIn)}
 <div class="box"><b>Use it in Prepress</b><br>Library (toolbar) → search for it, or paste <code>${esc(m.id)}</code>.<br><br><b>With an AI (MCP)</b><br>“Import library item <code>${esc(m.id)}</code> into my site.”</div>
 <form method="post" action="/library/${m.id}/report"><button class="meta" style="background:none;border:0;padding:0;cursor:pointer;text-decoration:underline" type="submit">Report this item</button></form>
 </aside></div></main>`,

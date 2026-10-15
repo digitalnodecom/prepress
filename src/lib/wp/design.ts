@@ -13,6 +13,8 @@ export interface FontDef {
   name: string;
   stack: string;
   google?: string; // Google Fonts family spec
+  /** A monospace face, offered for the mono slot. */
+  mono?: boolean;
 }
 
 export const FONTS: Record<string, FontDef> = {
@@ -23,13 +25,23 @@ export const FONTS: Record<string, FontDef> = {
   outfit: { name: 'Outfit', stack: '"Outfit", system-ui, sans-serif', google: 'Outfit:wght@400;500;600;700' },
   'ibm-plex-sans': { name: 'IBM Plex Sans', stack: '"IBM Plex Sans", system-ui, sans-serif', google: 'IBM+Plex+Sans:wght@400;500;600;700' },
   syne: { name: 'Syne', stack: '"Syne", system-ui, sans-serif', google: 'Syne:wght@500;600;700;800' },
-  fraunces: { name: 'Fraunces', stack: '"Fraunces", Georgia, serif', google: 'Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700' },
+  fraunces: { name: 'Fraunces', stack: '"Fraunces", Georgia, serif', google: 'Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,300;1,9..144,400' },
+  newsreader: { name: 'Newsreader', stack: '"Newsreader", Georgia, serif', google: 'Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400' },
   'playfair-display': { name: 'Playfair Display', stack: '"Playfair Display", Georgia, serif', google: 'Playfair+Display:wght@400;600;700' },
   lora: { name: 'Lora', stack: '"Lora", Georgia, serif', google: 'Lora:wght@400;500;600;700' },
   'source-serif': { name: 'Source Serif 4', stack: '"Source Serif 4", Georgia, serif', google: 'Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700' },
   'instrument-serif': { name: 'Instrument Serif', stack: '"Instrument Serif", Georgia, serif', google: 'Instrument+Serif' },
   system: { name: 'System Sans', stack: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' },
+  'ibm-plex-mono': { name: 'IBM Plex Mono', stack: '"IBM Plex Mono", ui-monospace, Menlo, monospace', google: 'IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400', mono: true },
+  'jetbrains-mono': { name: 'JetBrains Mono', stack: '"JetBrains Mono", ui-monospace, Menlo, monospace', google: 'JetBrains+Mono:wght@400;500;600', mono: true },
+  'dm-mono': { name: 'DM Mono', stack: '"DM Mono", ui-monospace, Menlo, monospace', google: 'DM+Mono:wght@400;500', mono: true },
+  'space-mono': { name: 'Space Mono', stack: '"Space Mono", ui-monospace, Menlo, monospace', google: 'Space+Mono:wght@400;700', mono: true },
+  'system-mono': { name: 'System Mono', stack: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', mono: true },
 };
+
+/** Font keys for each slot: mono faces only in the mono slot. */
+export const TEXT_FONT_KEYS = Object.keys(FONTS).filter((k) => !FONTS[k].mono);
+export const MONO_FONT_KEYS = Object.keys(FONTS).filter((k) => FONTS[k].mono);
 
 export const DEFAULT_DESIGN: Design = {
   palette: {
@@ -42,6 +54,7 @@ export const DEFAULT_DESIGN: Design = {
   },
   headingFont: 'fraunces',
   bodyFont: 'dm-sans',
+  monoFont: 'system-mono',
   radius: 'soft',
   contentSize: '720px',
   wideSize: '1200px',
@@ -103,6 +116,7 @@ export function sanitizeDesign(input: Partial<Design> | undefined): Design {
     palette,
     headingFont: font(d.headingFont, DEFAULT_DESIGN.headingFont),
     bodyFont: font(d.bodyFont, DEFAULT_DESIGN.bodyFont),
+    monoFont: typeof d.monoFont === 'string' && FONTS[d.monoFont]?.mono ? d.monoFont : 'system-mono',
     radius: d.radius === 'none' || d.radius === 'round' ? d.radius : 'soft',
     contentSize: typeof d.contentSize === 'string' ? d.contentSize : DEFAULT_DESIGN.contentSize,
     wideSize: typeof d.wideSize === 'string' ? d.wideSize : DEFAULT_DESIGN.wideSize,
@@ -115,8 +129,10 @@ export function radiusValue(r: Design['radius']): { button: string; card: string
   return { button: '8px', card: '12px' };
 }
 
+const monoKey = (d: Design) => (d.monoFont && FONTS[d.monoFont]?.mono ? d.monoFont : 'system-mono');
+
 export function googleFontsUrl(design: Design): string | null {
-  const families = [...new Set([design.headingFont, design.bodyFont])]
+  const families = [...new Set([design.headingFont, design.bodyFont, monoKey(design)])]
     .map((k) => FONTS[k]?.google)
     .filter(Boolean);
   if (!families.length) return null;
@@ -216,6 +232,8 @@ function baseThemeJson(design: Design) {
           design.headingFont === design.bodyFont
             ? [{ slug: 'body', name: FONTS[design.bodyFont].name, fontFamily: FONTS[design.bodyFont].stack }]
             : [],
+          // Always present, so blocks can use var(--wp--preset--font-family--mono).
+          [{ slug: 'mono', name: FONTS[monoKey(design)].name, fontFamily: FONTS[monoKey(design)].stack }],
         ),
         fontSizes: FONT_SIZES.map((f) => ({
           slug: f.slug,

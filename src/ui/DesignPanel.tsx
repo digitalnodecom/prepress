@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Check } from 'lucide-react';
 import type { Design, PaletteSlug } from '../lib/types';
 import { PALETTE_SLUGS } from '../lib/types';
-import { FONTS, PALETTE_NAMES, contrastRatio, textOn } from '../lib/wp/design';
+import { FONTS, MONO_FONT_KEYS, TEXT_FONT_KEYS, PALETTE_NAMES, contrastRatio, textOn } from '../lib/wp/design';
 
 interface Props {
   design: Design;
@@ -66,16 +66,24 @@ export function DesignPanel({ design, onChange }: Props) {
       <div className="field">
         <label htmlFor="font-heading">Heading font</label>
         <select id="font-heading" className="select" value={d.headingFont} onChange={(e) => update({ ...d, headingFont: e.target.value })}>
-          {Object.entries(FONTS).map(([k, f]) => (
-            <option key={k} value={k}>{f.name}</option>
+          {TEXT_FONT_KEYS.map((k) => (
+            <option key={k} value={k}>{FONTS[k].name}</option>
           ))}
         </select>
       </div>
       <div className="field">
         <label htmlFor="font-body">Body font</label>
         <select id="font-body" className="select" value={d.bodyFont} onChange={(e) => update({ ...d, bodyFont: e.target.value })}>
-          {Object.entries(FONTS).map(([k, f]) => (
-            <option key={k} value={k}>{f.name}</option>
+          {TEXT_FONT_KEYS.map((k) => (
+            <option key={k} value={k}>{FONTS[k].name}</option>
+          ))}
+        </select>
+      </div>
+      <div className="field">
+        <label htmlFor="font-mono">Mono font</label>
+        <select id="font-mono" className="select" value={d.monoFont ?? 'system-mono'} onChange={(e) => update({ ...d, monoFont: e.target.value })}>
+          {MONO_FONT_KEYS.map((k) => (
+            <option key={k} value={k}>{FONTS[k].name}</option>
           ))}
         </select>
       </div>

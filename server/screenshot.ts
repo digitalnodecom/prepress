@@ -129,6 +129,8 @@ export interface ShotOptions {
   section?: number;
   /** false: only the first screen. Default: the whole page. */
   fullPage?: boolean;
+  /** Emulate prefers-reduced-motion: reduce (default), so entrance and scroll animations show their final state. */
+  reducedMotion?: boolean;
   browser?: string | null;
 }
 
@@ -158,6 +160,7 @@ export async function screenshot(o: ShotOptions): Promise<Shot> {
     const s = (m: string, p: Record<string, unknown> = {}) => cdp.send(m, p, sessionId);
     await s('Page.enable');
     await s('Emulation.setDeviceMetricsOverride', { width: dev.width, height: dev.height, deviceScaleFactor: 1, mobile: dev.mobile });
+    await s('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: o.reducedMotion === false ? 'no-preference' : 'reduce' }] });
     const loaded = cdp.once('Page.loadEventFired', sessionId);
     await s('Page.navigate', { url });
     await loaded;
