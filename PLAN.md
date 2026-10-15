@@ -1,6 +1,6 @@
-# Blockwright — roadmap
+# Prepress — roadmap
 
-Status: **working prototype (v0.1).** Generate a multi-page site from a brief, edit sections with AI, restyle via theme.json tokens, export a WordPress 7.0 block theme + WXR. All output passes Gutenberg's block validator.
+Status: **v0.3** — MCP server, custom blocks, patterns, theme.json editing. **v0.2** — standalone binary, Gutenberg editor, self-hosted site. Earlier: **working prototype (v0.1).** Generate a multi-page site from a brief, edit sections with AI, restyle via theme.json tokens, export a WordPress 7.0 block theme + WXR. All output passes Gutenberg's block validator.
 
 Each milestone below is sized to be picked up as one Claude Code session. Keep `npm test` green throughout (see CLAUDE.md).
 
@@ -17,7 +17,7 @@ The tests validate markup with Gutenberg's JS validator. Next, confirm the end-t
 
 ## M2 — Persistence and a real backend
 
-Today the site lives in the browser (localStorage draft + `site.json` export).
+v0.2 ships a single-site file-backed server (`server/app.ts`): draft autosave, publish, media uploads, password login. What remains:
 
 - [ ] Backend (Hono/Next API routes + Postgres). Tables: `sites`, `pages` (markup), `revisions`, `assets`.
 - [ ] Move AI calls server-side (keeps keys private, enables streaming, rate limits, usage metering).
@@ -28,8 +28,8 @@ Today the site lives in the browser (localStorage draft + `site.json` export).
 
 - [ ] **Edit operations instead of section regeneration.** Have the model emit ops (`update_attrs(path, attrs)`, `insert(path, node)`, `move`, `remove`) for small edits so untouched copy can't drift. Keep whole-section replace for structural changes.
 - [ ] **Inline text editing** in the preview (contenteditable on text blocks, mapped back to block attributes by path).
-- [ ] **Embed the real block editor** (`@wordpress/block-editor` `BlockEditorProvider` + `BlockList`) as an "Advanced" mode. The packages are already in the bundle; this gives users full Gutenberg editing on the same markup.
-- [ ] Pattern picker without AI (insert pattern with placeholder props).
+- [x] **Embed the real block editor** — done in v0.2: it is now the main editing surface.
+- [x] Pattern picker without AI — the inserter's Patterns tab (`wp/inserterPatterns.ts`).
 - [ ] Section variations ("show me 3 alternatives"), with side-by-side preview.
 
 ## M4 — Media pipeline
@@ -41,7 +41,7 @@ Today the site lives in the browser (localStorage draft + `site.json` export).
 ## M5 — Hosting before the move to WordPress
 
 - [ ] Publish the static render (already produced in the export's `static/` folder) to a CDN with custom domains.
-- [ ] Forms: core WordPress has no stable form block. Options: (a) ship a tiny companion plugin with a `blockwright/form` block and a matching hosted endpoint, (b) map to a popular forms plugin on export. Decide before building.
+- [ ] Forms: core WordPress has no stable form block. Options: (a) ship a tiny companion plugin with a `prepress/form` block and a matching hosted endpoint, (b) map to a popular forms plugin on export. Decide before building.
 - [ ] SEO basics: per-page title/description (exported as post meta via a small plugin or Yoast/RankMath meta keys), sitemap, OG images.
 
 ## M6 — Direct push to WordPress
@@ -60,7 +60,7 @@ Today the site lives in the browser (localStorage draft + `site.json` export).
 
 1. **Who is the first customer:** freelancers/agencies (want WP handoff) or small businesses (want hosting)? This decides the order of M5 and M6.
 2. **WordPress version policy:** pin to the latest WP release, or let users choose a target (6.8 / 6.9 / 7.0) and re-serialize with that version's packages at export time?
-3. **Custom blocks:** stay core-only (maximum portability) or ship a companion plugin for forms, sliders, maps and similar blocks?
+3. **Custom blocks:** decided in v0.3 — site-defined dynamic `prepress/*` blocks shipped inside the theme. Open: move them to a companion plugin so they survive a theme switch?
 4. **Header navigation:** inline links in the header part (current) vs. a `wp_navigation` post in the WXR (editable in the Site Editor's Navigation screen).
 
 ## Known gaps in v0.1

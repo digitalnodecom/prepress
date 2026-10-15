@@ -17,6 +17,7 @@ import type { Page, Site } from '../types';
 import { compileGlobalStyles, googleFontsUrl, presetToCss } from './design';
 import { ensureBlocks } from './registry';
 import { templates, HOME_SLUG } from './templates';
+import { fillTemplate, isCustomBlock, sanitizeCss } from './customBlocks';
 
 interface RawBlock {
   blockName: string | null;
@@ -32,6 +33,10 @@ interface Ctx {
   css: string[];
   n: number;
   markSections: boolean;
+  /** Custom block types whose CSS is already in ctx.css. */
+  styled: Set<string>;
+  /** Synced patterns being rendered (stops a pattern that includes itself). */
+  patternStack: number[];
 }
 
 const esc = (s: string) =>
@@ -174,7 +179,7 @@ function applyLayout(block: RawBlock, html: string, firstChunk: string | null, c
 // ---------- block supports for dynamic blocks (get_block_wrapper_attributes) ----------
 
 function wrapper(name: string, attrs: Record<string, any>, extra: string[] = []): string {
-  const cls = [`wp-block-${name.replace('core/', '')}`, ...extra];
+  const cls = [`wp-block-${name.replace(/^core\//, '').replace('/', '-')}`, ...extra];
   if (attrs.className) cls.push(attrs.className);
   if (attrs.align) cls.push(`align${attrs.align}`);
   if (attrs.fontSize) cls.push(`has-${attrs.fontSize}-font-size`);
@@ -189,7 +194,8 @@ function wrapper(name: string, attrs: Record<string, any>, extra: string[] = [])
   } catch {
     style = '';
   }
-  return `class="${esc(cls.join(' '))}"${style ? ` style="${esc(style)}"` : ''}`;
+  const id = typeof attrs.anchor === 'string' && attrs.anchor ? ` id="${esc(attrs.anchor)}"` : '';
+  return `class="${esc(cls.join(' '))}"${style ? ` style="${esc(style)}"` : ''}${id}`;
 }
 
 // ---------- renderer ----------
@@ -240,7 +246,7 @@ function renderDynamic(block: RawBlock, ctx: Ctx): string | null {
       const inner = sections
         .map((b: RawBlock, i: number) => {
           const html = renderBlock(b, ctx);
-          return ctx.markSections ? patchFirst(html, { attrs: { 'data-bw-section': String(i) } }) : html;
+          return ctx.markSections ? patchFirst(html, { attrs: { 'data-pp-section': String(i) } }) : html;
         })
         .join('\n');
       const html = `<div ${wrapper('core/post-content', a, ['entry-content'])}>${inner}</div>`;
@@ -253,11 +259,40 @@ function renderDynamic(block: RawBlock, ctx: Ctx): string | null {
         .filter((b: RawBlock) => b.blockName)
         .map((b: RawBlock) => renderBlock(b, ctx))
         .join('');
-      return `<${tag} class="wp-block-template-part" data-bw-part="${esc(a.slug ?? '')}">${inner}</${tag}>`;
+      return `<${tag} class="wp-block-template-part" data-pp-part="${esc(a.slug ?? '')}">${inner}</${tag}>`;
     }
+    case 'core/block':
+      return renderPatternRef(block, ctx);
     default:
-      return null;
+      return isCustomBlock(block.blockName) ? renderCustom(block, ctx) : null;
   }
+}
+
+/** Site-defined `prepress/*` block: wrapper (block supports) + filled template. */
+function renderCustom(block: RawBlock, ctx: Ctx): string {
+  const def = ctx.site.blocks?.find((b) => b.name === block.blockName);
+  if (!def) return '';
+  if (def.css && !ctx.styled.has(def.name)) {
+    ctx.styled.add(def.name);
+    ctx.css.push(sanitizeCss(def.css));
+  }
+  const content = block.innerBlocks.map((b) => renderBlock(b, ctx)).join('');
+  const a = block.attrs ?? {};
+  return `<div ${wrapper(block.blockName!, a)}>${fillTemplate(def, a, content)}</div>`;
+}
+
+/** Synced pattern reference (`core/block`): render the pattern's content in place, as WordPress does. */
+function renderPatternRef(block: RawBlock, ctx: Ctx): string {
+  const ref = Number(block.attrs?.ref);
+  const pattern = ctx.site.patterns?.find((p) => p.id === ref && p.synced);
+  if (!pattern || ctx.patternStack.includes(ref) || ctx.patternStack.length > 8) return '';
+  ctx.patternStack.push(ref);
+  const html = rawParse(pattern.content)
+    .filter((b: RawBlock) => b.blockName)
+    .map((b: RawBlock) => renderBlock(b, ctx))
+    .join('');
+  ctx.patternStack.pop();
+  return html;
 }
 
 function renderBlock(block: RawBlock, ctx: Ctx): string {
@@ -275,32 +310,32 @@ html{scroll-behavior:smooth}
 body{-webkit-font-smoothing:antialiased}
 .wp-site-blocks > *{margin-block-start:0}
 img{max-width:100%;height:auto}
-[data-bw-section]{position:relative;cursor:pointer;transition:box-shadow .12s}
-body.bw-editing [data-bw-section]:hover{box-shadow:inset 0 0 0 2px rgba(59,130,246,.55)}
-body.bw-editing [data-bw-section].bw-selected{box-shadow:inset 0 0 0 3px #3b82f6}
+[data-pp-section]{position:relative;cursor:pointer;transition:box-shadow .12s}
+body.pp-editing [data-pp-section]:hover{box-shadow:inset 0 0 0 2px rgba(59,130,246,.55)}
+body.pp-editing [data-pp-section].pp-selected{box-shadow:inset 0 0 0 3px #3b82f6}
 .wp-block-image img{display:block;width:100%}
 .wp-block-media-text__media img{border-radius:inherit}
 `;
 
 const PREVIEW_SCRIPT = `
 (function(){
-  document.body.classList.add('bw-editing');
+  document.body.classList.add('pp-editing');
   document.addEventListener('click', function(e){
     var a = e.target.closest('a');
     if (a) {
       e.preventDefault();
       var href = a.getAttribute('href') || '';
-      if (href.charAt(0) === '/') parent.postMessage({ bw: 'navigate', href: href }, '*');
+      if (href.charAt(0) === '/') parent.postMessage({ pp: 'navigate', href: href }, '*');
     }
-    var s = e.target.closest('[data-bw-section]');
-    if (s) parent.postMessage({ bw: 'select', index: Number(s.getAttribute('data-bw-section')) }, '*');
+    var s = e.target.closest('[data-pp-section]');
+    if (s) parent.postMessage({ pp: 'select', index: Number(s.getAttribute('data-pp-section')) }, '*');
   });
   window.addEventListener('message', function(e){
     var d = e.data || {};
-    if (d.bw === 'highlight') {
-      document.querySelectorAll('.bw-selected').forEach(function(n){ n.classList.remove('bw-selected'); });
-      var el = document.querySelector('[data-bw-section="' + d.index + '"]');
-      if (el) { el.classList.add('bw-selected'); if (d.scroll) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    if (d.pp === 'highlight') {
+      document.querySelectorAll('.pp-selected').forEach(function(n){ n.classList.remove('pp-selected'); });
+      var el = document.querySelector('[data-pp-section="' + d.index + '"]');
+      if (el) { el.classList.add('pp-selected'); if (d.scroll) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
     }
   });
 })();`;
@@ -313,7 +348,7 @@ export interface RenderOptions {
 /** Render a full HTML document for one page of the site. */
 export function renderPage(site: Site, page: Page, opts: RenderOptions = {}): string {
   ensureBlocks();
-  const ctx: Ctx = { site, page, css: [], n: 0, markSections: !!opts.markSections };
+  const ctx: Ctx = { site, page, css: [], n: 0, markSections: !!opts.markSections, styled: new Set(), patternStack: [] };
   const body = rawParse(templates().page)
     .filter((b: RawBlock) => b.blockName)
     .map((b: RawBlock) => renderBlock(b, ctx))
@@ -323,7 +358,7 @@ export function renderPage(site: Site, page: Page, opts: RenderOptions = {}): st
 <title>${esc(page.title)} – ${esc(site.name)}</title>
 ${fonts ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="${fonts}">` : ''}
 <style id="wp-block-library">${blockLibraryCss}</style>
-<style id="global-styles">${compileGlobalStyles(site.design)}</style>
+<style id="global-styles">${compileGlobalStyles(site.design, site.themeJson)}</style>
 <style id="core-block-supports">${ctx.css.join('\n')}</style>
 <style>${PREVIEW_CSS}</style>
 </head><body class="wp-site-blocks-body"><div class="wp-site-blocks">${body}</div>${opts.interactive ? `<script>${PREVIEW_SCRIPT}</script>` : ''}</body></html>`;

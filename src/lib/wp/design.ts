@@ -6,7 +6,7 @@
  * padding: "var:preset|spacing|70"), so a restyle is a single theme.json edit,
  * in this builder and later in the WordPress Site Editor.
  */
-import type { Design, PaletteSlug } from '../types';
+import type { Design, PaletteSlug, ThemeJsonPatch } from '../types';
 import { PALETTE_SLUGS } from '../types';
 
 export interface FontDef {
@@ -155,7 +155,41 @@ export function gradients(design: Design) {
 
 // ---------- theme.json ----------
 
-export function buildThemeJson(design: Design) {
+const isObj = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
+
+/** Deep merge for theme.json: objects merge, arrays and scalars replace, null deletes. */
+export function mergeThemeJson<T extends Record<string, any>>(base: T, patch: Record<string, any> | undefined): T {
+  if (!patch) return base;
+  const out: Record<string, any> = { ...base };
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === null) delete out[k];
+    else if (isObj(v) && isObj(out[k])) out[k] = mergeThemeJson(out[k], v);
+    else out[k] = v;
+  }
+  return out as T;
+}
+
+const MAX_THEME_PATCH = 256 * 1024;
+
+/** Validate an untrusted theme.json patch (from the AI/MCP). Throws with an actionable message. */
+export function cleanThemeJsonPatch(input: unknown): ThemeJsonPatch {
+  if (!isObj(input)) throw new Error('theme.json patch must be an object, e.g. { "settings": {…}, "styles": {…} }');
+  const json = JSON.stringify(input);
+  if (json.length > MAX_THEME_PATCH) throw new Error('theme.json patch is too large (max 256 KB)');
+  if (/<\/?style|<script/i.test(json)) throw new Error('theme.json may not contain HTML tags');
+  const { version, $schema, ...rest } = input as Record<string, any>;
+  void version;
+  void $schema;
+  return rest;
+}
+
+export function buildThemeJson(design: Design, patch?: ThemeJsonPatch) {
+  const tj = baseThemeJson(design);
+  if (!patch) return tj;
+  return { ...mergeThemeJson(tj, patch as Record<string, any>), $schema: tj.$schema, version: 3 } as typeof tj;
+}
+
+function baseThemeJson(design: Design) {
   const p = design.palette;
   const r = radiusValue(design.radius);
   return {
@@ -296,12 +330,20 @@ function decls(obj: Record<string, unknown> | undefined): string {
 }
 
 /** Generates the global-styles CSS for the preview from the same theme.json we export. */
-export function compileGlobalStyles(design: Design): string {
-  const tj = buildThemeJson(design);
+export function compileGlobalStyles(design: Design, patch?: ThemeJsonPatch): string {
+  const tj: any = buildThemeJson(design, patch);
+  tj.settings ??= {};
+  tj.styles ??= {};
+  const palette: any[] = tj.settings.color?.palette ?? [];
+  const gradientsList: any[] = tj.settings.color?.gradients ?? [];
+  const fontSizes: any[] = tj.settings.typography?.fontSizes ?? [];
+  const families: any[] = tj.settings.typography?.fontFamilies ?? [];
+  const spacingSizes: any[] = tj.settings.spacing?.spacingSizes ?? [];
+  const layout = tj.settings.layout ?? {};
   const vars: string[] = [];
   const classes: string[] = [];
 
-  for (const { slug, color } of tj.settings.color.palette) {
+  for (const { slug, color } of palette) {
     vars.push(`--wp--preset--color--${slug}:${color}`);
     classes.push(
       `.has-${slug}-color{color:var(--wp--preset--color--${slug}) !important}`,
@@ -309,34 +351,35 @@ export function compileGlobalStyles(design: Design): string {
       `.has-${slug}-border-color{border-color:var(--wp--preset--color--${slug}) !important}`,
     );
   }
-  for (const { slug, gradient } of tj.settings.color.gradients) {
+  for (const { slug, gradient } of gradientsList) {
     vars.push(`--wp--preset--gradient--${slug}:${gradient}`);
     classes.push(`.has-${slug}-gradient-background{background:var(--wp--preset--gradient--${slug}) !important}`);
   }
-  for (const f of FONT_SIZES) {
-    vars.push(`--wp--preset--font-size--${f.slug}:${f.min === f.max ? f.size : fluid(f.min, f.max)}`);
+  for (const f of fontSizes) {
+    const fl = f.fluid;
+    vars.push(`--wp--preset--font-size--${f.slug}:${fl && typeof fl === 'object' && fl.min && fl.max ? fluid(fl.min, fl.max) : f.size}`);
     classes.push(`.has-${f.slug}-font-size{font-size:var(--wp--preset--font-size--${f.slug}) !important}`);
   }
-  for (const ff of tj.settings.typography.fontFamilies) {
+  for (const ff of families) {
     vars.push(`--wp--preset--font-family--${ff.slug}:${ff.fontFamily}`);
     classes.push(`.has-${ff.slug}-font-family{font-family:var(--wp--preset--font-family--${ff.slug}) !important}`);
   }
-  for (const sp of SPACING_SIZES) vars.push(`--wp--preset--spacing--${sp.slug}:${sp.size}`);
+  for (const sp of spacingSizes) vars.push(`--wp--preset--spacing--${sp.slug}:${sp.size}`);
 
   const st = tj.styles;
   vars.push(
-    `--wp--style--global--content-size:${design.contentSize}`,
-    `--wp--style--global--wide-size:${design.wideSize}`,
-    `--wp--style--block-gap:${st.spacing.blockGap}`,
-    `--wp--style--root--padding-left:${presetToCss(st.spacing.padding.left)}`,
-    `--wp--style--root--padding-right:${presetToCss(st.spacing.padding.right)}`,
+    `--wp--style--global--content-size:${layout.contentSize ?? design.contentSize}`,
+    `--wp--style--global--wide-size:${layout.wideSize ?? design.wideSize}`,
+    `--wp--style--block-gap:${presetToCss(st.spacing?.blockGap ?? '1.5rem')}`,
+    `--wp--style--root--padding-left:${presetToCss(st.spacing?.padding?.left ?? '0px')}`,
+    `--wp--style--root--padding-right:${presetToCss(st.spacing?.padding?.right ?? '0px')}`,
     `--wp--style--root--padding-top:0px`,
     `--wp--style--root--padding-bottom:0px`,
   );
 
   const gap = 'var(--wp--style--block-gap)';
-  const el = st.elements;
-  const blocks = st.blocks as Record<string, any>;
+  const el = st.elements ?? {};
+  const blocks = (st.blocks ?? {}) as Record<string, any>;
   const css = [
     `:root{${vars.join(';')}}`,
     // Base layout rules WordPress emits for every block theme.

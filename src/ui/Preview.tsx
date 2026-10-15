@@ -23,8 +23,8 @@ export function Preview({ html, device, selected, onSelect, onNavigate }: Props)
     const onMsg = (e: MessageEvent) => {
       if (e.source !== ref.current?.contentWindow) return;
       const d = e.data || {};
-      if (d.bw === 'select') onSelect(d.index);
-      if (d.bw === 'navigate') onNavigate(d.href);
+      if (d.pp === 'select') onSelect(d.index);
+      if (d.pp === 'navigate') onNavigate(d.href);
     };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
@@ -51,11 +51,11 @@ export function Preview({ html, device, selected, onSelect, onNavigate }: Props)
     } catch {
       /* ignore */
     }
-    if (selectedRef.current != null) w.postMessage({ bw: 'highlight', index: selectedRef.current, scroll: false }, '*');
+    if (selectedRef.current != null) w.postMessage({ pp: 'highlight', index: selectedRef.current, scroll: false }, '*');
   };
 
   useEffect(() => {
-    ref.current?.contentWindow?.postMessage({ bw: 'highlight', index: selected, scroll: true }, '*');
+    ref.current?.contentWindow?.postMessage({ pp: 'highlight', index: selected, scroll: true }, '*');
   }, [selected]);
 
   return (

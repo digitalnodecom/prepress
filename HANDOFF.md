@@ -2,13 +2,48 @@
 
 This file is for the next agent or developer picking up this project. It explains what the project is, why it is built this way, what works, what is unverified, and exactly what to do next. Read this file first, then `CLAUDE.md` (working rules, same content as `AGENTS.md`), then `PLAN.md` (roadmap).
 
-Last updated: 2026-10-14 · Version: v0.1 (working prototype) · Target: WordPress 7.0
+Last updated: 2026-10-14 · Version: v0.3 · Target: WordPress 7.0
+
+## v0.4 changes (read first)
+
+- **Deploy targets** (`server/deploy.ts`): Publish writes `--out` (staging, previewed at `/`), then copies it to every `auto` target: `folder` (local dir) or `sftp` (system OpenSSH `sftp -b` batch, `BatchMode=yes`, `accept-new`, user's keys). Per-target hash manifest in `<data>/deploys/<id>.json` → only changed files upload, only our files get removed, foreign files backed up to `<data>/backup/<id>-<time>/`. Config `<data>/deploy.json`, validated by `cleanTarget` (no option injection via host, no quotes in batch paths, folders can't overlap `--data`/`--out`).
+- API: `GET/PUT /api/deploy`, `POST /api/deploy` `{target?, full?}`, `POST /api/deploy/test`. Publish responses carry `deploys[]`. MCP: `publish_site {deploy?}` deploys; new `deploy_site {target?, full?}` (29 tools). MCP can't edit targets.
+- UI: `src/ui/DeployPanel.tsx` in the Site tab (list, status, Deploy now, add/edit/test/remove).
+- **Header/footer in the page editor** (`src/ui/editor/templateAreas.tsx`): like WordPress's "Show template", the page canvas shows header, page content and footer; header/footer edit in place (site-wide, marks the part custom) via editor-only area wrapper blocks that are split back on save. List view shows Header / Page content / Footer. Status-bar toggle. Header/Footer tabs still edit a part alone.
+- Fixed: the first edit after load reloaded the canvas iframe (settings rebuilt on every content change via `info.pages` and `site.blocks ?? []`), dropping keystrokes.
+- Fixed CLI parsing: `--no-auth --mcp-token x` used to swallow `--mcp-token` as the value of `--no-auth`.
+- Verified: `tests/deploy.test.ts` (folder + `tests/fixtures/fake-sftp.mjs` stand-in), and by hand against a real OpenSSH sshd: MCP publish → SFTP + folder, incremental redeploy (0 uploaded), deleted page removed remotely, placeholder backed up, editor panel add/test/save/deploy, Publish button deploying to 3 targets.
+
+## v0.3 changes
+
+- **MCP server** (`server/mcp.ts`, `/mcp`, stateless Streamable HTTP, bearer token in `<data>/mcp-token.txt`). 28 tools: read (site, page, part, theme.json, block catalog, validate), pages/sections, header/footer, site info, design, theme.json patch, custom blocks, patterns, publish, export. Every write: store (rev + SSE) → normalize → serialize → validation report.
+- **Headless engine**: the server now runs the editor's lib (`src/lib/engine.ts`, bundled by Vite SSR) under jsdom. Publish renders on the server (`POST /api/publish` with no body); `POST /api/export` builds the WP zip into `<data>/exports/`.
+- **Custom blocks** (`wp/customBlocks.ts`): dynamic `prepress/*` blocks with typed attributes + sanitized template; generic editor UI (`ui/editor/customBlockEdit.tsx`); exported as theme blocks (`wp/wpBlocks.ts`). TS/JS/PHP template parity is tested.
+- **Patterns**: `site.patterns`; unsynced → inserter "Site patterns" + theme `patterns/*.php`; synced → `core/block {ref}` with ids ≥ 5000, WXR `wp_block` items, edited in their own editor view.
+- **theme.json patch**: `site.themeJson` deep-merged in `buildThemeJson`; preview CSS reads the merged presets.
+- **Concurrency**: `server/store.ts` (rev, mutex), editor 409 → reload, `/api/events` SSE → live reload with a toast; undo brings back the editor's previous state.
+- Verified: `npm test` 35/35 (adds custom blocks incl. PHP parity, theme.json, MCP end-to-end), `npx tsc` clean, binary built and driven by an external MCP client with the editor open (live update, custom block inspector, synced pattern edit, server publish).
+- **Not verified**: the exported theme in a real WordPress (custom blocks' render.php/editor JS, synced pattern id preservation by the importer). Do PLAN M1 (Playground) next. Block icons are dashicon names; Prepress's editor doesn't load the Dashicons font, so they show blank there (fine in WordPress).
+
+
+## v0.2 changes (read first)
+
+- **Renamed** Blockwright → Prepress everywhere (package, UI, export generator strings, `site.json` format `prepress/site@1`, localStorage key, `data-pp-*` preview attributes).
+- **Binary + server.** `server/app.ts` is one HTTP handler used by both `npm run dev` (Vite middleware) and the Bun-compiled binary (`server/main.ts`, `npm run build:bin`). `/?admin=1` → editor; `/` and `/<slug>/` → the published site; `/uploads/*` → media; `/api/*` → draft, publish, media, login, Claude proxy. Data dir: `draft.json`, `published/pages/*.html`, `published/site.json`, `uploads/`, `admin-password.txt`, `sessions.json` (hashed tokens). Password is generated on first run unless `--password`/`PREPRESS_PASSWORD`/`--no-auth`. Binds 127.0.0.1 by default.
+- **Gutenberg editor.** `src/ui/editor/Editor.tsx` embeds `@wordpress/block-editor` (canvas iframe, inserter with our patterns, list view, inspector, breadcrumb, format library) on each page's `post_content`. The old section list is now the "AI" sidebar tab and stays in sync with editor selection (`SelectionSync`). Code mode edits markup directly (re-parsed + re-serialized). Media library = `editor.MediaUpload` filter backed by `/api/media`.
+- **Publish model.** The browser renders each page with `renderPage()` and posts the HTML; the server only stores and serves files. The server never runs WordPress packages.
+- **Verified:** `npm test` 14/14 (adds server + inserter-pattern tests), `npx tsc` clean, binary built for 5 targets, headless check of login → edit text in canvas → autosave → publish → public page shows the edit.
+- **Not verified:** real AI (still no key in this environment), Windows/Linux binaries were cross-compiled but not run, image upload exercised by tests only (not through the editor UI).
+- **Header/footer editing** (v0.2.1): Header and Footer tabs in the top bar open the part in the same editor. First edit marks the part custom (`site.custom`); custom parts survive restyles/renames, and their menu links follow page add/rename/remove (custom labels are kept). "Reset to automatic" in the sidebar discards edits. Dynamic blocks there use our own edit components (`src/ui/editor/dynamicBlocks.tsx`); link search suggests the site's pages. Tests: `tests/parts.test.ts`.
+- **Static output** (v0.2.2): Publish writes `index.html` / `<slug>/index.html` / `404.html` / `uploads/` into `--out` (default `<data>/public`), for a web server or hosting panel on 80/443 while Prepress runs on another port only for editing. `--site-url` sets "View site" links. See `docs/DEPLOY.md`.
+- Admin UI is light-only (`data-theme="light"` on `<html>`): WordPress components have no dark theme.
+
 
 ---
 
 ## 1. The product in one paragraph
 
-Blockwright is an AI website builder whose native file format is **WordPress Gutenberg block markup**. A user describes their business, the AI plans the pages and the visual style, writes each page, and the user can then edit sections by giving instructions in plain language. When the user is ready to move to WordPress, they export a zip containing a **block theme** (`theme.json`, templates, header/footer template parts) and a **WXR import file** with all pages. Because the content was WordPress block markup all along, the move is a copy, not a conversion. The pitch: "start fast with AI, never locked in."
+Prepress is an AI website builder whose native file format is **WordPress Gutenberg block markup**. A user describes their business, the AI plans the pages and the visual style, writes each page, and the user can then edit sections by giving instructions in plain language. When the user is ready to move to WordPress, they export a zip containing a **block theme** (`theme.json`, templates, header/footer template parts) and a **WXR import file** with all pages. Because the content was WordPress block markup all along, the move is a copy, not a conversion. The pitch: "start fast with AI, never locked in."
 
 ## 2. Origin and the decisions already made
 
@@ -67,7 +102,7 @@ npm install
 npm test          # ~30 s, must stay green
 npx tsc           # typecheck, must be clean
 npm run dev       # http://localhost:5173
-npm run build     # dist/index.html (single file) + dist/blockwright.html (claude.ai artifact format)
+npm run build     # dist/index.html (single file) + dist/prepress.html (claude.ai artifact format)
 ```
 
 AI in local dev: create `.env.local`:
@@ -120,7 +155,7 @@ Static blocks' saved HTML is passed through untouched. At render time it adds wh
 - dynamic blocks: `core/site-title`, `core/site-tagline`, `core/navigation` + `navigation-link`, `core/post-title`, `core/post-content`, `core/template-part`;
 - global styles CSS compiled from the same theme.json that is exported (`compileGlobalStyles` in `wp/design.ts`), plus `@wordpress/block-library`'s `style.css`.
 
-It renders the page through `templates().page`, the same template that ships in the theme. Section wrappers get `data-bw-section` attributes and a small script posts click/navigation messages to the app.
+It renders the page through `templates().page`, the same template that ships in the theme. Section wrappers get `data-pp-section` attributes and a small script posts click/navigation messages to the app.
 
 ## 6. File map
 

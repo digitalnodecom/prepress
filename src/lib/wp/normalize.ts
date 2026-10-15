@@ -187,7 +187,9 @@ function normalizeNode(node: unknown, parent: string | null, opts: NormalizeOpti
   const kids: unknown[] = Array.isArray(n.innerBlocks) ? n.innerBlocks : Array.isArray(n.children) ? n.children : [];
 
   ensureBlocks();
-  if (!name || !allowed.includes(name) || !getBlockType(name)) {
+  // Site-defined blocks (prepress/*) and synced pattern references are allowed wherever content is.
+  const permitted = allowed.includes(name) || name.startsWith('prepress/') || name === 'core/block';
+  if (!name || !permitted || !getBlockType(name)) {
     opts.report?.dropped.push(name || '(unnamed)');
     // Keep content where we can: unwrap children, or salvage text as a paragraph.
     if (kids.length) return kids.flatMap((k) => normalizeNode(k, parent, opts));

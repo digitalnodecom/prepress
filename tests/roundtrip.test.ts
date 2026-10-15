@@ -10,6 +10,7 @@ import { exportSite, buildWxr } from '../src/lib/wp/export';
 import { templates } from '../src/lib/wp/templates';
 import { PATTERNS } from '../src/lib/wp/patterns';
 import { sanitizeDesign } from '../src/lib/wp/design';
+import { inserterPatterns } from '../src/lib/wp/inserterPatterns';
 
 async function demoSite(): Promise<Site> {
   let site!: Site;
@@ -45,6 +46,15 @@ describe('round trip', () => {
         expectValid(markup, `${name}/${tone}`);
         expect(report.dropped, `${name} dropped attrs`).toEqual([]);
       }
+    }
+  });
+
+  test('inserter patterns (block editor Patterns tab) are valid and complete', () => {
+    const list = inserterPatterns(sanitizeDesign({}));
+    expect(list.length).toBe(Object.keys(PATTERNS).length);
+    for (const p of list) {
+      expect(p.content.length, p.name).toBeGreaterThan(50);
+      expectValid(p.content, p.name);
     }
   });
 
@@ -88,7 +98,7 @@ describe('round trip', () => {
     let site = await demoSite();
     const html = renderPage(site, site.pages[0], { markSections: true, interactive: true });
     expect(html).toContain('is-layout-constrained');
-    expect(html).toContain('data-bw-section="0"');
+    expect(html).toContain('data-pp-section="0"');
     expect(html).toContain('wp-block-navigation-item');
     expect(html).toContain('Fern &amp; Ember');
 

@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import type { Site } from '../lib/types';
 import { HOME_SLUG } from '../lib/wp/templates';
 import { pageUrl } from '../lib/wp/render';
+import { blockUsage } from '../lib/site';
+import { McpPanel } from './McpPanel';
+import { DeployPanel } from './DeployPanel';
 
 interface Props {
   site: Site;
@@ -14,6 +17,13 @@ interface Props {
   onRemovePage(id: string): void;
   onImport(data: unknown): void;
   onLoadSample(): void;
+  onSignOut?(): void;
+  serverMode?: boolean;
+  /** Something has been published (deploy needs it). */
+  published?: boolean;
+  onEditPattern?(id: number): void;
+  onDeletePattern?(id: number): void;
+  onDeleteBlock?(name: string): void;
 }
 
 export function SitePanel(p: Props) {
@@ -83,6 +93,60 @@ export function SitePanel(p: Props) {
       </div>
 
       <hr className="sep" />
+      <span className="eyebrow">Site blocks</span>
+      {(p.site.blocks ?? []).length ? (
+        <div className="pages-list">
+          {(p.site.blocks ?? []).map((b) => {
+            const used = blockUsage(p.site, b.name);
+            return (
+              <div key={b.name} className="page-row">
+                <span className="section-name" title={b.description}>{b.title}</span>
+                <span className="mono">{used.length ? `${used.length}× used` : 'unused'}</span>
+                {confirm === b.name ? (
+                  <button className="btn small danger" onClick={() => { p.onDeleteBlock?.(b.name); setConfirm(null); }}>{used.length ? 'Delete + uses' : 'Confirm'}</button>
+                ) : (
+                  <button className="btn ghost small danger" onClick={() => setConfirm(b.name)}>Delete</button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="hint">No custom blocks yet. An AI connected over MCP can create them (they appear in the inserter and ship inside the WordPress theme).</p>
+      )}
+
+      <span className="eyebrow">Patterns</span>
+      {(p.site.patterns ?? []).length ? (
+        <div className="pages-list">
+          {(p.site.patterns ?? []).map((pt) => (
+            <div key={pt.id} className="page-row">
+              <span className="section-name">{pt.title}</span>
+              <span className="mono">{pt.synced ? 'synced' : 'pattern'}</span>
+              <span className="row" style={{ gap: 4 }}>
+                <button className="btn ghost small" onClick={() => p.onEditPattern?.(pt.id)}>Edit</button>
+                {confirm === `pattern:${pt.id}` ? (
+                  <button className="btn small danger" onClick={() => { p.onDeletePattern?.(pt.id); setConfirm(null); }}>Confirm</button>
+                ) : (
+                  <button className="btn ghost small danger" onClick={() => setConfirm(`pattern:${pt.id}`)}>Delete</button>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="hint">No patterns yet. Patterns are reusable sections; synced ones update everywhere they're used.</p>
+      )}
+
+      {p.serverMode && (
+        <>
+          <hr className="sep" />
+          <DeployPanel published={!!p.published} />
+          <hr className="sep" />
+          <McpPanel />
+        </>
+      )}
+
+      <hr className="sep" />
       <span className="eyebrow">Blocks used</span>
       <div className="stats">
         {byName.map(([n, c]) => (
@@ -118,6 +182,7 @@ export function SitePanel(p: Props) {
           }}
         />
         <button className="btn small ghost" onClick={p.onLoadSample} disabled={!!p.busy}>Reload sample site</button>
+        {p.onSignOut && <button className="btn small ghost" onClick={p.onSignOut}>Sign out</button>}
       </div>
       <p className="hint">The export includes <span className="mono">site.json</span>, so you can reopen a site here later.</p>
       {p.brief && (
