@@ -30,6 +30,7 @@ export const FONTS: Record<string, FontDef> = {
   'playfair-display': { name: 'Playfair Display', stack: '"Playfair Display", Georgia, serif', google: 'Playfair+Display:wght@400;600;700' },
   lora: { name: 'Lora', stack: '"Lora", Georgia, serif', google: 'Lora:wght@400;500;600;700' },
   'source-serif': { name: 'Source Serif 4', stack: '"Source Serif 4", Georgia, serif', google: 'Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700' },
+  cormorant: { name: 'Cormorant Garamond', stack: '"Cormorant Garamond", Garamond, Georgia, serif', google: 'Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500' },
   'instrument-serif': { name: 'Instrument Serif', stack: '"Instrument Serif", Georgia, serif', google: 'Instrument+Serif' },
   system: { name: 'System Sans', stack: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' },
   'ibm-plex-mono': { name: 'IBM Plex Mono', stack: '"IBM Plex Mono", ui-monospace, Menlo, monospace', google: 'IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400', mono: true },

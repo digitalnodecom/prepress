@@ -4,6 +4,15 @@ This file is for the next agent or developer picking up this project. It explain
 
 Last updated: 2026-10-14 · Version: v0.3 · Target: WordPress 7.0
 
+## v0.11 — library set #3: Night Garden (first dark style)
+
+- `library-sets/garden/`: night green `#0e1411`, moonlight cream, lantern amber (≈8:1, used as text and as a button with dark text); Cormorant Garamond (new FONTS entry) / DM Sans / DM Mono; round radius; `color-scheme: dark`; grain only on dark-backgrounded sections.
+- Blocks `prepress/garden-glow|botanical|arch|menu-item|hours|seal|vine|reserve`: lantern/moon glow headline with CSS fireflies; five generated botanicals (fern, monstera with even-odd fenestrations, eucalyptus, poppy, moonflower) as line or silhouette; arched night-sky windows (moon, dusk, amber) as the photo stand-in; menu lines and opening hours with dotted leaders; a `textPath` seal (shared id is fine: identical geometry); a vine divider that grows in on scroll; a reservation card that links out (no forms).
+- 10 patterns + header/footer; template *Nocturne* (Home, Menu, Evenings, Visit, Private dining), every page ends on the `#reserve` card.
+- Gotchas found: block attributes can't be named `style`/`align` (reserved); spacing presets stop at 80; a `label()` helper must merge `style.typography`, not replace it.
+- Tests: every set's palette passes the Styles panel contrast checks; Night Garden's `textOn(accent)` is base.
+- Live: 60 official items (Nocturne template `jx0ajj4moa`); demo `nocturne.prepress.digitalno.de` (token in a scratch folder).
+
 ## v0.10 — mono font slot + library set #2: Paper Edition
 
 - **Mono slot:** `Design.monoFont` (optional; `sanitizeDesign` defaults it to `system-mono`, only `FONTS` entries with `mono: true` qualify). `buildThemeJson` always emits a `mono` font family, so `var(--wp--preset--font-family--mono)` / `fontFamily: "mono"` work on every site; `googleFontsUrl` loads it. New faces: Newsreader, IBM Plex Mono, JetBrains Mono, DM Mono, Space Mono, System Mono; Fraunces now loads italics and weight 300. Styles panel has a Mono select (heading/body selects list only text faces); MCP `set_design` takes `monoFont`, `get_block_catalog` lists `monoFonts`.

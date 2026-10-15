@@ -7,10 +7,12 @@ import { buildStarter } from '../src/lib/starters';
 import { validateMarkup } from '../src/lib/wp/markup';
 import { exportSite } from '../src/lib/wp/export';
 import JSZip from 'jszip';
+import { contrastRatio, sanitizeDesign, textOn } from '../src/lib/wp/design';
 
 /** What each set must look like once built. */
 const EXPECT: Record<keyof typeof SETS, { pages: string[]; headerBlock: string; preview: { item: string; contains: string[] } }> = {
   kinetic: { pages: ['home', 'work', 'studio', 'contact'], headerBlock: 'wp:prepress/kinetic-pill', preview: { item: 'pattern:hero', contains: ['kx-marquee', '--wp--preset--font-size--mega', 'Syne'] } },
+  garden: { pages: ['home', 'menu', 'evenings', 'visit', 'private-dining'], headerBlock: 'ng-header-cta', preview: { item: 'pattern:hero', contains: ['ng-glow', 'ng-arch', 'Cormorant+Garamond', 'DM+Mono', 'color-scheme:dark'] } },
   paper: { pages: ['home', 'essays', 'on-slow-software', 'about', 'subscribe'], headerBlock: 'pe-header-cta', preview: { item: 'pattern:essay', contains: ['pe-lede', 'pe-note', '--wp--preset--font-family--mono', 'IBM+Plex+Mono', 'Newsreader'] } },
 };
 
@@ -69,3 +71,16 @@ for (const [key, set] of Object.entries(SETS) as [keyof typeof SETS, (typeof SET
     });
   });
 }
+
+test('every set palette passes the Styles panel contrast checks (light and dark)', () => {
+  for (const set of Object.values(SETS)) {
+    const d = sanitizeDesign(set.style.design);
+    const p = d.palette;
+    expect(contrastRatio(p.contrast, p.base), set.key).toBeGreaterThanOrEqual(7);
+    expect(contrastRatio(p.primary, p.base), set.key).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(p.primary, p[textOn(d, 'primary')]), set.key).toBeGreaterThanOrEqual(4.5);
+  }
+  const night = sanitizeDesign(SETS.garden.style.design);
+  expect(textOn(night, 'accent')).toBe('base');
+  expect(contrastRatio(night.palette.accent, night.palette.base)).toBeGreaterThanOrEqual(4.5);
+});
