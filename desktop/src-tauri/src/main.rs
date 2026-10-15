@@ -481,6 +481,10 @@ fn main() {
                 .title("Prepress")
                 .inner_size(1440.0, 900.0)
                 .min_inner_size(960.0, 600.0)
+                // Tauri's own file-drop handler claims every drag on the window, so WebKit never
+                // sees it and the editor's HTML5 drag & drop (moving blocks, List View, inserter,
+                // dropping image files to upload) silently does nothing. Let the page handle drags.
+                .disable_drag_drop_handler()
                 .on_navigation(move |url| {
                     if internal(url) {
                         return true;
