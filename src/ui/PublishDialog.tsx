@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, CloudUpload, ExternalLink, Plus, XCircle } from 'lucide-react';
-import { loadDeploy, type DeployResult, type DeployTargetView } from '../lib/backend';
+import { CheckCircle2, CloudUpload, ExternalLink, Globe, Plus, XCircle } from 'lucide-react';
+import { checkHostingName, loadDeploy, saveDeployTargets, type DeployResult, type DeployTargetView, type HostingCheck } from '../lib/backend';
 import { EMPTY_TARGET, TYPE_LABEL, TargetForm, TargetStatus } from './DeployPanel';
 
 interface Props {
   pages: number;
+  /** Suggests the free hosting name. */
+  siteName: string;
   onPublish(targets: string[]): Promise<{ deploys: DeployResult[] }>;
   onClose(): void;
 }
@@ -14,7 +16,49 @@ interface Props {
  * targets (SFTP, FTP, S3, folders). With no targets yet, it starts with the
  * connection form so the first publish goes straight to the host.
  */
-export function PublishDialog({ pages, onPublish, onClose }: Props) {
+const slug = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+
+/** "Publish free at <name>.prepress.digitalno.de": live name check, then add the target and publish. */
+function FreeHosting({ suggestion, busy, onUse }: { suggestion: string; busy: boolean; onUse(name: string): void }) {
+  const [name, setName] = useState(suggestion);
+  const [check, setCheck] = useState<HostingCheck | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setCheck(null);
+    setError(null);
+    if (name.length < 3) return;
+    const t = window.setTimeout(() => {
+      checkHostingName(name)
+        .then((c) => (c.name === name ? setCheck(c) : undefined))
+        .catch((e) => setError(String(e?.message ?? e)));
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [name]);
+  const usable = !!check && check.valid && (check.available || check.owner);
+  return (
+    <div className="free-hosting">
+      <div className="free-hosting-head">
+        <Globe size={18} />
+        <div>
+          <strong>Free on prepress.digitalno.de</strong>
+          <p className="hint">Your site at its own address, hosted by Prepress. Names are first come, first served; this site keeps its name for as long as you publish from it.</p>
+        </div>
+      </div>
+      <div className="row nowrap free-hosting-row">
+        <div className="free-name">
+          <input className="input mono" value={name} onChange={(e) => setName(slug(e.target.value) || e.target.value.toLowerCase())} aria-label="Site address" spellCheck={false} autoCapitalize="off" />
+          <span className="mono">.prepress.digitalno.de</span>
+        </div>
+        <button className="btn primary" disabled={busy || !usable} onClick={() => onUse(name)}><CloudUpload size={16} /> Publish here</button>
+      </div>
+      <p className={`deploy-status ${error || (check && !usable) ? 'bad' : 'ok'}`}>
+        {error ?? (!check ? (name.length < 3 ? 'At least 3 characters.' : 'Checking…') : check.owner ? 'This address is already yours.' : check.available ? `${check.url.replace('https://', '')} is free.` : check.reason === 'Taken' ? 'Taken — try another name.' : check.reason)}
+      </p>
+    </div>
+  );
+}
+
+export function PublishDialog({ pages, siteName, onPublish, onClose }: Props) {
   const [targets, setTargets] = useState<DeployTargetView[] | null>(null);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
@@ -27,7 +71,7 @@ export function PublishDialog({ pages, onPublish, onClose }: Props) {
       const r = await loadDeploy();
       setTargets(r.targets);
       setChosen(new Set(select ? select(r.targets) : r.targets.filter((t) => t.auto).map((t) => t.id)));
-      if (!r.targets.length) setAdding(true);
+
     } catch (e: any) {
       setTargets([]);
       setError(String(e?.message ?? e));
@@ -83,6 +127,25 @@ export function PublishDialog({ pages, onPublish, onClose }: Props) {
           <p className="hint">Loading…</p>
         ) : (
           <>
+            {!targets.some((t) => t.type === 'prepress') && !adding && (
+              <FreeHosting
+                suggestion={slug(siteName)}
+                busy={busy}
+                onUse={async (name) => {
+                  setError(null);
+                  try {
+                    const strip = ({ id, name: n, connection, url, auto }: DeployTargetView) => ({ id, name: n, connection, url, auto });
+                    const saved = await saveDeployTargets([...targets.map(strip), { id: '', name: 'Prepress (free)', connection: `prepress://${name}`, auto: true }]);
+                    const added = saved.targets.find((t) => t.type === 'prepress');
+                    setTargets(saved.targets);
+                    if (added) await run([...ids, added.id]);
+                  } catch (e: any) {
+                    setError(String(e?.message ?? e));
+                  }
+                }}
+              />
+            )}
+
             {targets.length > 0 && (
               <div className="publish-targets" role="group" aria-label="Upload to">
                 <span className="eyebrow">Upload to</span>
@@ -113,7 +176,7 @@ export function PublishDialog({ pages, onPublish, onClose }: Props) {
               <>
                 {!targets.length && (
                   <div>
-                    <span className="eyebrow">Where should this site go?</span>
+                    <span className="eyebrow">Your own host</span>
                     <p className="hint">Paste the connection your host gave you, or pick a template and fill it in. You can add more targets later in Settings → Publishing.</p>
                   </div>
                 )}
@@ -133,7 +196,7 @@ export function PublishDialog({ pages, onPublish, onClose }: Props) {
               </>
             ) : (
               <div className="row">
-                <button className="btn small ghost" disabled={busy} onClick={() => setAdding(true)}><Plus size={14} /> Add target</button>
+                <button className="btn small ghost" disabled={busy} onClick={() => setAdding(true)}><Plus size={14} /> {targets.length ? 'Add target' : 'Use your own host (SFTP, FTP, S3, folder)'}</button>
               </div>
             )}
 

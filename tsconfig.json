@@ -4,5 +4,5 @@
     "jsx": "react-jsx", "strict": true, "skipLibCheck": true, "noEmit": true, "allowImportingTsExtensions": true,
     "types": ["vite/client", "node"], "resolveJsonModule": true, "isolatedModules": true
   },
-  "include": ["src", "tests", "server"]
+  "include": ["src", "tests", "server", "hosting"]
 }

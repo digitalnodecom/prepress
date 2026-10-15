@@ -11,7 +11,9 @@
     "start": "bun server/main.ts",
     "typecheck": "tsc",
     "desktop": "node scripts/desktop.mjs dev",
-    "build:desktop": "npm run build:bin && node scripts/desktop.mjs build"
+    "build:desktop": "npm run build:bin && node scripts/desktop.mjs build",
+    "build:hosting": "npx bun build --compile --minify --target=bun-linux-x64 hosting/main.ts --outfile bin/prepress-hosting-linux-x64",
+    "deploy:hosting": "deploy/hosting/deploy.sh"
   },
   "keywords": [],
   "author": "",

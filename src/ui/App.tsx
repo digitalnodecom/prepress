@@ -693,7 +693,7 @@ export function App() {
             onStarter={(id, name, about) => startFrom(id, name, about)}
           />
         )}
-        {publishing && <PublishDialog pages={site.pages.length} onPublish={doPublish} onClose={() => setPublishing(false)} />}
+        {publishing && <PublishDialog pages={site.pages.length} siteName={site.name} onPublish={doPublish} onClose={() => setPublishing(false)} />}
         {settings && (
           <SettingsDialog
             site={site}

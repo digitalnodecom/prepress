@@ -36,6 +36,7 @@ import { ConflictError, DraftStore, withFileLock } from './store.ts';
 import { createMcpHandler } from './mcp.ts';
 import { createDeployer } from './deploy.ts';
 import { createClients } from './clients.ts';
+import { HOSTING_DOMAIN, checkName } from './targets/prepress.ts';
 import { createMediaImporter, localizeSite } from './media.ts';
 import { screenshot, type Device } from './screenshot.ts';
 
@@ -62,6 +63,8 @@ export interface ServerOptions {
   mcpToken?: string;
   /** false disables the MCP endpoint. */
   mcp?: boolean;
+  /** Prepress hosting API base (default https://prepress.digitalno.de, env PREPRESS_HOSTING_API); tests point it at a local one. */
+  hostingApi?: string;
   /** Test hooks for media import (server/media.ts): fake fetch / DNS. */
   mediaImport?: { fetch?: typeof fetch; resolve?: (host: string) => Promise<string[]> };
   /** Home folder whose AI apps' configs "Connect" edits (tests use a temp folder). Default: the user's home. */
@@ -143,7 +146,7 @@ export interface PublishOptions {
   targets?: string[];
 }
 
-export type CoreOptions = Pick<ServerOptions, 'dataDir' | 'outDir' | 'siteUrl' | 'engine' | 'mediaImport'>;
+export type CoreOptions = Pick<ServerOptions, 'dataDir' | 'outDir' | 'siteUrl' | 'engine' | 'mediaImport' | 'hostingApi'>;
 
 /**
  * Everything that works on a site's data folder without HTTP: the draft store,
@@ -204,7 +207,7 @@ export function createSiteCore(opts: CoreOptions) {
 
   const store = new DraftStore(dir);
   const exportsDir = join(dir, 'exports');
-  const deployer = createDeployer({ dataDir: dir, outDir });
+  const deployer = createDeployer({ dataDir: dir, outDir, hostingApi: opts.hostingApi });
   // Publish and deploy take a lock file too: an editor server and a stdio MCP process may share this folder.
   const publishLock = join(dir, 'publish.lock');
   const deployFiles = (which?: string | string[], full = false) => deployer.deploy(readManifest().files, which, full);
@@ -409,6 +412,15 @@ export function createHandler(opts: ServerOptions) {
       const file = `${stem}-${randomBytes(4).toString('hex')}${ext}`;
       writeFileSync(join(uploadsDir, file), buf);
       return json(res, 200, { url: `/uploads/${file}`, id: file, mime: MIME[ext] });
+    }
+    if (route === 'GET /api/hosting/check') {
+      // Is <name>.prepress.digitalno.de free? (the Publish dialog's live check)
+      const name = String(url.searchParams.get('name') ?? '').toLowerCase().slice(0, 64);
+      try {
+        return json(res, 200, { domain: HOSTING_DOMAIN, ...(await checkName(name, { dataDir: dir, base: opts.hostingApi })) });
+      } catch (e: any) {
+        return json(res, 502, { error: String(e?.message ?? e) });
+      }
     }
     if (route === 'POST /api/media/import') {
       // Editor: an image linked by URL (inserted, pasted) becomes a media library file.

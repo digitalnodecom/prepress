@@ -49,6 +49,24 @@ Passwords and keys are stored only in the site folder (`deploy.json`, file mode
 entering the secret again. An AI over MCP can publish (`publish_site`,
 `deploy_site`) but can't see or change targets.
 
+## Free hosting on prepress.digitalno.de
+
+`prepress://my-site` (or Publish → *Free on prepress.digitalno.de*) publishes to
+`https://my-site.prepress.digitalno.de`. Names are first come, first served (3–40
+letters, digits, dashes; some are reserved). The site folder's token
+(`<site folder>/hosting-token`, created on first use) is the proof of ownership:
+publishing from the same folder — or a copy holding the same token — keeps updating
+the site; anyone else gets "taken". Keep that file if you move the site; losing it
+means losing the name. Limits: 250 MB and 2000 files per site, 25 MB per file,
+HTML/CSS/JS/JSON/XML/TXT, images (no SVG), MP4/WebM/MP3/PDF and web fonts.
+
+How it works: the hosting API (`hosting/`, behind Caddy at
+`https://prepress.digitalno.de/api/v1/…`) checks the name, token, path, type and
+quota, then hands out a 15-minute presigned PUT URL for each file; the file goes
+straight to object storage (one bucket, a folder per site). Caddy serves
+`<name>.prepress.digitalno.de` from that folder, with certificates issued on demand
+only for claimed names.
+
 ## How an upload works
 
 - Only files that changed since the last upload to that target are sent (content

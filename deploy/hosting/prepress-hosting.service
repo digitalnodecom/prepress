@@ -1,0 +1,29 @@
+[Unit]
+Description=Prepress hosting API (free sites at *.prepress.digitalno.de)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/prepress-hosting
+EnvironmentFile=/etc/prepress-hosting.env
+Environment=HOSTING_DATA=/var/lib/prepress-hosting
+DynamicUser=yes
+StateDirectory=prepress-hosting
+StateDirectoryMode=0700
+Restart=always
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

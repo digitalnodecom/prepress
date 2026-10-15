@@ -1,0 +1,61 @@
+# Prepress free hosting — https://<name>.prepress.digitalno.de
+#
+#   prepress.digitalno.de/api/*   → hosting API (127.0.0.1:8787)
+#   <name>.prepress.digitalno.de  → the bucket folder <name>/ (public-read objects)
+#
+# Certificates are issued on demand, per site, and only for names the API says
+# are claimed (tls-ask), so unknown subdomains never get a certificate.
+{
+	on_demand_tls {
+		ask http://127.0.0.1:8787/api/v1/tls-ask
+	}
+}
+
+prepress.digitalno.de {
+	encode zstd gzip
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8787
+	}
+	handle {
+		header Content-Type "text/html; charset=utf-8"
+		respond `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Prepress hosting</title><style>body{font:17px/1.5 system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;background:#f6f6f4;color:#16191d}main{max-width:34rem;padding:24px}h1{font-size:28px;margin:0 0 8px}</style><main><h1>Prepress hosting</h1><p>Free hosting for sites built with Prepress, at <b>your-name.prepress.digitalno.de</b>. Open Prepress, click Publish, and pick a name.</p></main></html>` 200
+	}
+}
+
+*.prepress.digitalno.de {
+	tls {
+		on_demand
+	}
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# Clean URLs: /about → /about/ (pages are <slug>/index.html).
+	@noslash path_regexp ^(.*/)?[^/.]+$
+	redir @noslash {path}/ 308
+
+	# /about/ → /about/index.html, then into the site's folder; drop the query string.
+	# (Two `rewrite`s in one block are mutually exclusive in Caddy, hence `uri` for the first step.)
+	route {
+		uri path_regexp ^(.*)/$ $1/index.html
+		rewrite * /{labels.3}{path}?
+	}
+
+	reverse_proxy https://prepress.s3.fr-par.scw.cloud {
+		header_up Host prepress.s3.fr-par.scw.cloud
+		header_down -X-Amz-Request-Id
+		header_down -X-Amz-Id-2
+		header_down -X-Amz-Version-Id
+		header_down -X-Amz-Meta-*
+		header_down -Server
+		@missing status 403 404
+		handle_response @missing {
+			rewrite * /api/v1/notfound?site={labels.3}
+			reverse_proxy 127.0.0.1:8787
+		}
+	}
+}

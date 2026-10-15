@@ -370,3 +370,15 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 0; width: 100%; }
 .ai-manual[open] summary .lucide { transform: rotate(90deg); }
 .ai-manual[open] { display: flex; flex-direction: column; gap: 12px; }
 .settings-body > * { flex-shrink: 0; }
+
+/* Publish dialog: free hosting */
+.free-hosting { display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid var(--accent); border-radius: 12px; background: var(--accent-soft); }
+.free-hosting-head { display: flex; gap: 10px; align-items: flex-start; }
+.free-hosting-head .lucide { margin-top: 2px; color: var(--accent); }
+.free-hosting-head p { margin: 2px 0 0; }
+.free-hosting-row { align-items: center; }
+.free-name { flex: 1; min-width: 0; display: flex; align-items: center; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); padding-right: 10px; }
+.free-name input { border: 0; background: transparent; flex: 1; min-width: 60px; text-align: right; padding-right: 0; color: var(--fg); font-weight: 600; }
+.free-name input:focus { outline: none; }
+.free-name:focus-within { outline: 2px solid var(--accent); outline-offset: -1px; }
+.free-name .mono { color: var(--fg-3); white-space: nowrap; }

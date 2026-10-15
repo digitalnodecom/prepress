@@ -26,8 +26,10 @@ import { connectFolder } from './targets/folder.ts';
 import { connectSftp } from './targets/sftp.ts';
 import { connectFtp } from './targets/ftp.ts';
 import { connectS3 } from './targets/s3.ts';
+import { HOSTING_DOMAIN, connectPrepress } from './targets/prepress.ts';
+import { nameProblem } from '../hosting/names.ts';
 
-export type TargetType = 'folder' | 'sftp' | 'ftp' | 's3';
+export type TargetType = 'folder' | 'sftp' | 'ftp' | 's3' | 'prepress';
 
 export interface DeployTarget {
   id: string;
@@ -125,7 +127,7 @@ export function cleanTarget(raw: any, guard: { dataDir: string; outDir: string }
   if (!raw || typeof raw !== 'object') throw new Error('Expected a target object');
   const fields: any = typeof raw.connection === 'string' ? { ...parseConnection(raw.connection) } : { ...raw };
   const type: TargetType = fields.type;
-  if (!['folder', 'sftp', 'ftp', 's3'].includes(type)) throw new Error('Unknown target type');
+  if (!['folder', 'sftp', 'ftp', 's3', 'prepress'].includes(type)) throw new Error('Unknown target type');
 
   // MASK = keep the stored secret (only if the destination's login is the same).
   const sameLogin = prev && prev.type === type && prev.host === fields.host && prev.user === fields.user && prev.accessKeyId === fields.accessKeyId;
@@ -136,7 +138,7 @@ export function cleanTarget(raw: any, guard: { dataDir: string; outDir: string }
     }
   }
 
-  const defaultName = type === 'folder' ? 'Folder' : type === 's3' ? `S3 ${fields.bucket ?? ''}`.trim() : String(fields.host ?? 'Server');
+  const defaultName = type === 'prepress' ? 'Prepress (free)' : type === 'folder' ? 'Folder' : type === 's3' ? `S3 ${fields.bucket ?? ''}`.trim() : String(fields.host ?? 'Server');
   const name = String(raw.name ?? '').trim() || defaultName;
   if (!NAME.test(name)) throw new Error('Name is too long or has control characters');
   let path = String(fields.path ?? '').trim();
@@ -153,6 +155,16 @@ export function cleanTarget(raw: any, guard: { dataDir: string; outDir: string }
     const u = String(raw.url).trim().replace(/\/+$/, '');
     if (!/^https?:\/\/[^\s"<>]+$/.test(u)) throw new Error('URL must start with http:// or https://');
     t.url = u;
+  }
+
+  if (type === 'prepress') {
+    const name = String(fields.host ?? '');
+    const problem = nameProblem(name);
+    if (problem) throw new Error(`${name || 'Site name'}: ${problem}`);
+    t.host = name;
+    t.path = '';
+    t.url ??= `https://${name}.${HOSTING_DOMAIN}`;
+    return t;
   }
 
   if (type === 'folder') {
@@ -245,7 +257,7 @@ function readTargets(dataDir: string): DeployTarget[] {
 /** Targets without secrets (startup log). */
 export const listTargets = (dataDir: string) => readTargets(dataDir).map((t) => viewTarget(t));
 
-export function createDeployer(opts: { dataDir: string; outDir: string }) {
+export function createDeployer(opts: { dataDir: string; outDir: string; hostingApi?: string; hostingFetch?: typeof fetch }) {
   const configFile = join(opts.dataDir, 'deploy.json');
   const stateDir = join(opts.dataDir, 'deploys');
   const locks = new Map<string, Promise<unknown>>();
@@ -285,6 +297,7 @@ export function createDeployer(opts: { dataDir: string; outDir: string }) {
     if (t.type === 'folder') return connectFolder(t);
     if (t.type === 'ftp') return connectFtp(t);
     if (t.type === 's3') return connectS3(t);
+    if (t.type === 'prepress') return connectPrepress(t, { dataDir: opts.dataDir, base: opts.hostingApi, fetch: opts.hostingFetch });
     return connectSftp(t, { expected: state?.hostKey, seen: (fp) => state && (state.hostKey = fp) });
   }
 

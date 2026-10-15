@@ -4,6 +4,14 @@ This file is for the next agent or developer picking up this project. It explain
 
 Last updated: 2026-10-14 · Version: v0.3 · Target: WordPress 7.0
 
+## v0.7 — free hosting at *.prepress.digitalno.de (live)
+
+- **Infra (live):** Scaleway project "Prepress" (isolated from the other projects), bucket `prepress` (fr-par) with a bucket policy: public `GetObject` only (no listing), writes only for IAM application `prepress-hosting` (ObjectStorageFullAccess scoped to that project) and the org owner. Server `prepress` 95.217.217.146 (Ubuntu 26.04): Caddy 2.11.7 (official repo), `prepress-hosting.service` (DynamicUser, sandboxed, 127.0.0.1:8787), ufw 22/80/443. DNS (Cloudflare, DNS-only): `prepress.digitalno.de` and `*.prepress.digitalno.de` → 95.217.217.146. Let's Encrypt via on-demand TLS gated by `/api/v1/tls-ask`.
+- **API** `hosting/api.ts` (+`presign.ts`, `names.ts`, `main.ts`): claim (first come; token SHA-256 stored), availability (owner-aware with `x-site-token`), presign (path/type allowlist, 25 MB/file, 250 MB & 2000 files/site, signed content-type/length/cache-control; Scaleway rejects a different length), delete, release, tls-ask, notfound (site's 404.html with status 404). Claims rate-limited per IP.
+- **Client:** target `prepress://name`; token per site folder in `<data>/hosting-token`; Publish dialog card "Free on prepress.digitalno.de" with live check (`GET /api/hosting/check` → API with the site token).
+- **Verified live:** claimed and published `https://harbor-bakery.prepress.digitalno.de` from a local binary (pages 200, clean-URL redirect, custom 404 with status 404, query strings/`?acl` neutralised, no S3 headers, HSTS); unclaimed names get no certificate; a second site folder sees the name as taken. Tests: `tests/hosting.test.ts` (presign vs AWS example, API rules, end-to-end publish via a local API + S3 stand-in).
+- Open: no moderation/abuse reporting yet; `sites.json` isn't backed up; cookies are shared across *.prepress.digitalno.de (sites can set cookies for siblings — consider adding the domain to the Public Suffix List); `harbor-bakery` is a real claimed demo (release it with the token in the test site folder if unwanted).
+
 ## v0.6.5 — media import, AI screenshots
 
 - **External media are always copied into the media library.** `src/lib/wp/media.ts` finds media URLs in block attributes (image url, cover url, media-text mediaUrl, video/audio src/poster, custom-block `image` attributes) and rewrites them via `serialize()`. `server/media.ts` downloads: http(s) only, no credentials, every hop must resolve to a public IP (no localhost/LAN/link-local/metadata), ≤5 redirects, 30 s, 50 MB, type by magic bytes (PNG/JPEG/GIF/WebP/AVIF/MP4/WebM/MP3/PDF; SVG/HTML refused), deduped by content hash, URL→file index in `<data>/media-imports.json`. Used by: MCP writes (`change()` downloads first, outside the lock; results in `media.imported/failed`), MCP `import_media` / `list_media`, editor `MediaLocalizer` → `POST /api/media/import` (inserted/pasted images), errors shown as a banner. Normalizer now keeps `/uploads/…` URLs (was replacing them with placeholders) and gives covers with an image a 50% overlay like the WP editor.
@@ -44,7 +52,7 @@ Owner's direction (2026-10-15): Prepress is **the interface for creating a site*
 - Tests: `tests/deploy.test.ts` runs full publishes against an in-process SFTP server (ssh2 `Server`, `tests/fixtures/sftp-server.ts`), a minimal FTP server (`tests/fixtures/ftp-server.ts`), a signature-checking S3 stand-in, and a folder; SigV4 checked against AWS's two published examples; connection-string parsing/masking. `tests/server.test.ts` checks the Host guard.
 - Verified by hand: compiled binary → real OpenSSH (key auth) publish + Test (shows pinned host key); the editor's Publish-to form (templates, plain-FTP warning, connection error message); the desktop app opens a site straight into the editor (no login), the launcher renders with no recent sites, quitting stops the server.
 - Not verified: real AWS S3 / R2 (no credentials here; signing matches AWS's vectors), FTPS against a real server, the desktop app on Windows/Linux, "Create site" click in the app (would write to ~/Documents), code signing / notarization (the .app is ad-hoc signed: other Macs will need right-click → Open until it's signed with a Developer ID).
-- Open for the hosted version (prepress.digitalno.de): where site data lives, how a hosted service uploads (SFTP from the server; only S3-style storage can be written from the browser), auth. See docs/EXOPANEL.md.
+- Open for the hosted version (prepress.digitalno.de): where site data lives, how a hosted service uploads (SFTP from the server; only S3-style storage can be written from the browser), auth.
 
 ## v0.5 changes
 

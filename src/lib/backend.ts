@@ -120,7 +120,7 @@ export interface DeployResult {
   error?: string;
   backup?: string;
 }
-export type DeployTargetView = DeployTarget & { type: 'folder' | 'sftp' | 'ftp' | 's3'; insecure?: boolean; last: DeployResult | null };
+export type DeployTargetView = DeployTarget & { type: 'folder' | 'sftp' | 'ftp' | 's3' | 'prepress'; insecure?: boolean; last: DeployResult | null };
 
 const post = (body: unknown): RequestInit => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
@@ -129,6 +129,19 @@ const post = (body: unknown): RequestInit => ({ method: 'POST', headers: { 'cont
 export async function publish(targets?: string[]): Promise<{ publishedAt: string; deploys: DeployResult[] }> {
   return api('/api/publish', post(targets ? { targets } : {}));
 }
+
+export interface HostingCheck {
+  name: string;
+  url: string;
+  domain: string;
+  valid: boolean;
+  available: boolean;
+  /** Already claimed by this site (same site token). */
+  owner: boolean;
+  reason?: string;
+}
+/** Free hosting: is <name>.prepress.digitalno.de free (or this site's already)? */
+export const checkHostingName = (name: string) => api<HostingCheck>(`/api/hosting/check?name=${encodeURIComponent(name)}`);
 
 export const loadDeploy = () => api<{ targets: DeployTargetView[]; outDir: string; publishedAt: string | null }>('/api/deploy');
 export const saveDeployTargets = (targets: DeployTarget[]) => api<{ targets: DeployTargetView[] }>('/api/deploy', { ...post({ targets }), method: 'PUT' });

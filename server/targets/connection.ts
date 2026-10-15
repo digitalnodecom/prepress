@@ -8,6 +8,7 @@
  *   s3://ACCESS_KEY:SECRET@bucket/prefix?region=eu-central-1
  *   s3://KEY:SECRET@bucket?endpoint=https://<account>.r2.cloudflarestorage.com   (R2, MinIO, Spaces, B2 …)
  *   /Users/me/Sites/www  ·  ~/www  ·  file:///srv/www                            a folder on this computer
+ *   prepress://my-site                             free hosting at https://my-site.prepress.digitalno.de
  *
  * Passwords and secret keys may contain "/", "@" or ":" unencoded (the last "@"
  * before the host ends them); percent-encoding works too. Parsing only splits
@@ -35,13 +36,14 @@ export function parseConnection(input: string): Parsed {
   if (!m) {
     // A local folder: /abs, ~/x, C:\x
     if (/^(\/|~|[A-Za-z]:[\\/])/.test(str)) return { type: 'folder', path: str };
-    throw new Error('Start with sftp://, ftps://, ftp://, s3:// or a folder path');
+    throw new Error('Start with prepress://, sftp://, ftps://, ftp://, s3:// or a folder path');
   }
   const scheme = m[1].toLowerCase();
   let rest = m[2];
   if (scheme === 'file') return { type: 'folder', path: decode(rest.replace(/^localhost(?=\/)/, '')) };
+  if (scheme === 'prepress') return { type: 'prepress', host: rest.replace(/[/?#].*$/, '').toLowerCase(), path: '' };
 
-  const type: TargetType | undefined = scheme === 'sftp' || scheme === 'ssh' ? 'sftp' : scheme === 'ftp' || scheme === 'ftps' ? 'ftp' : scheme === 's3' ? 's3' : undefined;
+  const type: Exclude<TargetType, 'prepress'> | undefined = scheme === 'sftp' || scheme === 'ssh' ? 'sftp' : scheme === 'ftp' || scheme === 'ftps' ? 'ftp' : scheme === 's3' ? 's3' : undefined;
   if (!type) throw new Error(`Unsupported connection type "${scheme}://". Use sftp://, ftps://, ftp:// or s3://`);
 
   // Query (?key=…, ?region=…) — only after the host part, so secrets may contain "?" only percent-encoded.
@@ -98,6 +100,7 @@ export function formatConnection(t: DeployTarget, reveal = false): string {
   const enc = (s: string) => encodeURIComponent(s);
   const secret = (s?: string) => (s ? `:${reveal ? enc(s) : MASK}` : '');
   if (t.type === 'folder') return t.path;
+  if (t.type === 'prepress') return `prepress://${t.host}`;
   if (t.type === 's3') {
     const qs = new URLSearchParams();
     if (t.region) qs.set('region', t.region);

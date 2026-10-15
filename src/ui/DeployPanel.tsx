@@ -6,6 +6,7 @@ export const EMPTY_TARGET: DeployTarget = { id: '', name: '', connection: '', au
 
 /** Starting points for the connection field; the user replaces the placeholder parts. */
 const TEMPLATES: { label: string; value: string; hint: string }[] = [
+  { label: 'Prepress (free)', value: 'prepress://my-site', hint: 'Free hosting at https://my-site.prepress.digitalno.de. Names are first come, first served; this site keeps its name for as long as you publish from this site folder.' },
   { label: 'SFTP', value: 'sftp://user:password@example.com/var/www/example.com', hint: 'SSH hosting. Leave out ":password" to log in with your SSH key or ssh-agent; /~/public_html = inside your home folder.' },
   { label: 'FTPS', value: 'ftps://user:password@ftp.example.com/public_html', hint: 'Shared hosting with FTP over TLS. Paths are relative to the FTP login folder.' },
   { label: 'S3', value: 's3://ACCESS_KEY:SECRET_KEY@my-bucket/site?region=eu-central-1', hint: 'Amazon S3 (enable static website hosting on the bucket, or put CloudFront in front).' },
@@ -13,7 +14,7 @@ const TEMPLATES: { label: string; value: string; hint: string }[] = [
   { label: 'Folder', value: '~/Sites/example.com', hint: 'A folder on this computer, e.g. a local web server, or a synced folder (Dropbox, iCloud).' },
 ];
 
-export const TYPE_LABEL: Record<DeployTargetView['type'], string> = { sftp: 'SFTP', ftp: 'FTP', s3: 'S3', folder: 'Folder' };
+export const TYPE_LABEL: Record<DeployTargetView['type'], string> = { sftp: 'SFTP', ftp: 'FTP', s3: 'S3', folder: 'Folder', prepress: 'Free hosting' };
 
 export function when(iso: string) {
   const d = new Date(iso);
@@ -82,7 +83,7 @@ export function TargetForm({ targets, initial, saveLabel = 'Save', cancelable = 
       </div>
       <input
         className="input mono"
-        placeholder="sftp://user:password@host/path · ftps://… · s3://KEY:SECRET@bucket/prefix · /folder"
+        placeholder="prepress://my-site · sftp://user:password@host/path · ftps://… · s3://KEY:SECRET@bucket/prefix · /folder"
         value={edit.connection}
         spellCheck={false}
         autoCapitalize="off"
