@@ -488,9 +488,8 @@ export function App() {
       <SelectionSync selected={selected} onSelected={onSelectSection} />
       <div className="app">
         <header className="bar">
-          <a className="wordmark" href={siteBase ? siteBase + '/' : undefined} target="_blank" rel="noreferrer" title={siteBase ? 'View site' : undefined}>
+          <a className="wordmark" href={siteBase ? siteBase + '/' : undefined} target="_blank" rel="noreferrer" title={siteBase ? 'View site' : 'Prepress'} aria-label={siteBase ? 'Prepress — view site' : 'Prepress'}>
             <Logo />
-            <span>Prepress</span>
           </a>
           <div className="bar-tools">
             <button
