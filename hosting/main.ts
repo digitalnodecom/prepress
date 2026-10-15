@@ -7,6 +7,8 @@
  *   HOSTING_DATA=/var/lib/prepress-hosting
  *   S3_BUCKET=prepress  S3_REGION=fr-par  S3_ENDPOINT=https://s3.fr-par.scw.cloud
  *   S3_ACCESS_KEY=…  S3_SECRET_KEY=…
+ *   DOWNLOAD_MAC_URL=…  WEB_URL=…  (homepage links, optional)
+ *   LIBRARY_ADMIN_TOKEN=…           (library moderation, optional)
  */
 import { createServer } from 'node:http';
 import { createHostingApi } from './api.ts';
@@ -30,6 +32,9 @@ const handle = createHostingApi({
   secretAccessKey: env('S3_SECRET_KEY'),
   maxSiteBytes: Number(process.env.HOSTING_MAX_SITE_MB ?? 250) * 1024 * 1024,
   maxFileBytes: Number(process.env.HOSTING_MAX_FILE_MB ?? 25) * 1024 * 1024,
+  downloadMac: process.env.DOWNLOAD_MAC_URL || undefined,
+  webUrl: process.env.WEB_URL || undefined,
+  adminToken: process.env.LIBRARY_ADMIN_TOKEN || undefined,
 });
 
 const port = Number(process.env.HOSTING_PORT ?? 8787);

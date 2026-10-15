@@ -37,6 +37,7 @@ import { createMcpHandler } from './mcp.ts';
 import { createDeployer } from './deploy.ts';
 import { createClients } from './clients.ts';
 import { HOSTING_DOMAIN, checkName } from './targets/prepress.ts';
+import { createLibraryClient, libraryId } from './library.ts';
 import { createMediaImporter, localizeSite } from './media.ts';
 import { screenshot, type Device } from './screenshot.ts';
 
@@ -266,12 +267,14 @@ export function createSiteCore(opts: CoreOptions) {
     return screenshot({ html, uploadsDir, device: o.device, section: o.section, fullPage: o.fullPage });
   }
 
-  return { importer, localizeMedia, viewPage, dir, outDir, uploadsDir, manifestFile, exportsDir, store, deployer, readManifest, writeStatic, publishSite, exportWordPress, deploy };
+  const library = createLibraryClient({ dataDir: dir, base: opts.hostingApi });
+
+  return { library, importer, localizeMedia, viewPage, dir, outDir, uploadsDir, manifestFile, exportsDir, store, deployer, readManifest, writeStatic, publishSite, exportWordPress, deploy };
 }
 
 export function createHandler(opts: ServerOptions) {
   const core = createSiteCore(opts);
-  const { importer, localizeMedia, viewPage, dir, outDir, uploadsDir, manifestFile, exportsDir, store, deployer, readManifest, writeStatic, publishSite, exportWordPress, deploy } = core;
+  const { library, importer, localizeMedia, viewPage, dir, outDir, uploadsDir, manifestFile, exportsDir, store, deployer, readManifest, writeStatic, publishSite, exportWordPress, deploy } = core;
   // Writes by a `prepress mcp` process on the same folder reach open editors too.
   store.watch();
   const isAdmin = (url: URL) => url.searchParams.get('admin') === '1';
@@ -293,7 +296,7 @@ export function createHandler(opts: ServerOptions) {
     return !!token && h.startsWith('Bearer ') && timingSafeEqual(sha(h.slice(7).trim()), sha(token));
   };
 
-  const mcp = mcpEnabled && opts.engine ? createMcpHandler({ store, engine: opts.engine, publishSite, exportWordPress, deploy, deployTargets: deployer.view, siteUrl: opts.siteUrl, localizeMedia, importMedia: importer.import, uploadsDir, viewPage }) : null;
+  const mcp = mcpEnabled && opts.engine ? createMcpHandler({ store, engine: opts.engine, publishSite, exportWordPress, deploy, deployTargets: deployer.view, siteUrl: opts.siteUrl, localizeMedia, importMedia: importer.import, uploadsDir, viewPage, library }) : null;
 
   // ---------- API ----------
 
@@ -412,6 +415,31 @@ export function createHandler(opts: ServerOptions) {
       const file = `${stem}-${randomBytes(4).toString('hex')}${ext}`;
       writeFileSync(join(uploadsDir, file), buf);
       return json(res, 200, { url: `/uploads/${file}`, id: file, mime: MIME[ext] });
+    }
+    // Library (prepress.digitalno.de/library): browse, import, share — proxied so the site token stays here.
+    if (url.pathname.startsWith('/api/library/')) {
+      try {
+        if (route === 'GET /api/library/items') {
+          const p = url.searchParams;
+          return json(res, 200, { base: library.base, ...(await library.search({ type: p.get('type') ?? undefined, q: p.get('q') ?? undefined, sort: p.get('sort') ?? undefined, offset: Number(p.get('offset') ?? 0) || undefined })) });
+        }
+        if (route === 'GET /api/library/mine') return json(res, 200, { base: library.base, ...(await library.mine()) });
+        const item = url.pathname.match(/^\/api\/library\/items\/([^/]+)(\/delete)?$/);
+        if (item) {
+          const id = libraryId(decodeURIComponent(item[1]));
+          if (!id) return json(res, 400, { error: 'Not a library item id or link' });
+          if (req.method === 'GET' && !item[2]) return json(res, 200, await library.get(id, url.searchParams.get('import') === '1'));
+          if (req.method === 'POST' && item[2]) return json(res, 200, await library.remove(id));
+        }
+        if (route === 'POST /api/library/share') {
+          const draft = (await readJson(req)) ?? {};
+          const r = await library.share(draft);
+          return json(res, 201, { ...r, url: library.pageUrl(r.id) });
+        }
+        return json(res, 404, { error: 'Not found' });
+      } catch (e: any) {
+        return json(res, e?.status && e.status < 600 ? e.status : 502, { error: String(e?.message ?? e) });
+      }
     }
     if (route === 'GET /api/hosting/check') {
       // Is <name>.prepress.digitalno.de free? (the Publish dialog's live check)

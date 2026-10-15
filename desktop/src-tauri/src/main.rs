@@ -455,16 +455,6 @@ fn on_menu(app: &AppHandle, id: &str) {
     }
 }
 
-/// Pages the window may show: the launcher and the local Prepress editor. Everything else opens in the browser.
-fn internal(url: &Url) -> bool {
-    match url.scheme() {
-        "tauri" => true,
-        "http" | "https" => matches!(url.host_str(), Some("127.0.0.1") | Some("tauri.localhost")),
-        "about" | "blob" | "data" => true,
-        _ => false,
-    }
-}
-
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -474,7 +464,6 @@ fn main() {
         .menu(menu)
         .on_menu_event(|app, event| on_menu(app, event.id().as_ref()))
         .setup(|app| {
-            let nav = app.handle().clone();
             let popup = app.handle().clone();
             let dl = app.handle().clone();
             WebviewWindowBuilder::new(app, MAIN, WebviewUrl::App("index.html".into()))
@@ -485,13 +474,9 @@ fn main() {
                 // sees it and the editor's HTML5 drag & drop (moving blocks, List View, inserter,
                 // dropping image files to upload) silently does nothing. Let the page handle drags.
                 .disable_drag_drop_handler()
-                .on_navigation(move |url| {
-                    if internal(url) {
-                        return true;
-                    }
-                    let _ = nav.opener().open_url(url.as_str(), None::<&str>);
-                    false
-                })
+                // No on_navigation guard: wry calls it for iframes too (editor embeds, library
+                // previews) without saying which frame, so a guard would break them. Remote pages
+                // get no IPC anyway (capabilities cover the local launcher only).
                 // "View site", "Open ↗" and other target=_blank links: the system browser.
                 .on_new_window(move |url, _| {
                     let _ = popup.opener().open_url(url.as_str(), None::<&str>);

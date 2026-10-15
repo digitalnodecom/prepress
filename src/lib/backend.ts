@@ -161,3 +161,28 @@ export async function uploadMedia(file: File): Promise<MediaItem> {
 export async function listMedia(): Promise<MediaItem[]> {
   return (await api<{ items: MediaItem[] }>('/api/media', { cache: 'no-store' })).items;
 }
+
+// ---------- library (prepress.digitalno.de/library, via the local server) ----------
+
+export interface LibraryMeta {
+  id: string;
+  type: 'template' | 'pattern' | 'block' | 'style';
+  title: string;
+  description: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+  imports: number;
+  hidden?: boolean;
+}
+export interface LibraryList {
+  base: string;
+  total: number;
+  items: LibraryMeta[];
+}
+export const libraryList = (q: { type?: string; q?: string; sort?: string }) =>
+  api<LibraryList>(`/api/library/items?${new URLSearchParams(Object.entries(q).filter(([, v]) => v) as [string, string][])}`);
+export const libraryMine = () => api<LibraryList>('/api/library/mine');
+export const libraryGet = (id: string, forImport = false) => api<LibraryMeta & { payload: any }>(`/api/library/items/${encodeURIComponent(id)}${forImport ? '?import=1' : ''}`);
+export const libraryShare = (draft: unknown) => api<{ id: string; url: string }>('/api/library/share', post(draft));
+export const libraryDelete = (id: string) => api<{ deleted: string }>(`/api/library/items/${encodeURIComponent(id)}/delete`, post({}));

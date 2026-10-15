@@ -28,6 +28,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { join } from 'node:path';
 import { encodeKey, presign } from './presign.ts';
 import { nameProblem } from './names.ts';
+import { createLibrary } from './library.ts';
+import { PAGE_CSP, homePage, itemPage, libraryPage, reportedPage } from './pages.ts';
 
 export { NAME, RESERVED, nameProblem } from './names.ts';
 
@@ -46,6 +48,11 @@ export interface HostingConfig {
   maxFiles?: number;
   /** Claims per IP per hour. */
   claimsPerHour?: number;
+  /** Homepage links. */
+  downloadMac?: string;
+  webUrl?: string;
+  /** Library moderation (POST …/moderate {admin}). */
+  adminToken?: string;
   /** For tests: S3 calls (delete/list/404 fetch). */
   fetch?: typeof fetch;
   now?: () => number;
@@ -151,12 +158,12 @@ export function createHostingApi(cfg: HostingConfig) {
   const siteBytes = (s: SiteRecord) => Object.values(s.files).reduce((a, b) => a + b, 0);
   const url = (name: string) => `https://${name}.${cfg.domain}`;
 
-  async function body(req: IncomingMessage): Promise<any> {
+  async function body(req: IncomingMessage, max = 512 * 1024): Promise<any> {
     const chunks: Buffer[] = [];
     let size = 0;
     for await (const c of req) {
       size += (c as Buffer).length;
-      if (size > 512 * 1024) throw new HttpError(413, 'Request too large');
+      if (size > max) throw new HttpError(413, 'Request too large');
       chunks.push(c as Buffer);
     }
     try {
@@ -176,9 +183,32 @@ export function createHostingApi(cfg: HostingConfig) {
     return peer;
   };
 
+  const library = createLibrary(cfg.dataDir, { body, limit, clientIp: (req) => clientIp(req), fail: (status, message) => { throw new HttpError(status, message); }, now }, { adminToken: cfg.adminToken });
+  const html = (res: ServerResponse, status: number, body: string) => {
+    res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'content-security-policy': PAGE_CSP, 'x-content-type-options': 'nosniff', 'referrer-policy': 'strict-origin-when-cross-origin', 'cache-control': 'no-cache' });
+    res.end(body);
+    return null;
+  };
+
   // ---------- routes ----------
   async function route(req: IncomingMessage, res: ServerResponse): Promise<[number, unknown] | null> {
     const u = new URL(req.url ?? '/', 'http://x');
+    // Public pages: homepage and library.
+    if (req.method === 'GET' && u.pathname === '/') return html(res, 200, homePage({ domain: cfg.domain, downloadMac: cfg.downloadMac, webUrl: cfg.webUrl }, library.count()));
+    if (req.method === 'GET' && (u.pathname === '/library' || u.pathname === '/library/')) return html(res, 200, libraryPage(library, u.searchParams));
+    const itemPath = u.pathname.match(/^\/library\/([a-z0-9]{10})(\/report)?$/);
+    if (itemPath && req.method === 'GET' && !itemPath[2]) {
+      const item = library.get(itemPath[1]);
+      return item ? html(res, 200, itemPage(item)) : html(res, 404, libraryPage(library, new URLSearchParams()));
+    }
+    if (itemPath && req.method === 'POST' && itemPath[2]) {
+      library.report(itemPath[1], clientIp(req), 'web form');
+      return html(res, 200, reportedPage());
+    }
+    const lib = await library.route(req, res, u);
+    if (lib === 'done') return null;
+    if (lib) return lib;
+
     const m = u.pathname.match(/^\/api\/v1\/sites\/([^/]+)(?:\/(claim|presign|delete|release))?$/);
 
     if (req.method === 'GET' && u.pathname === '/api/v1/health') return [200, { ok: true, domain: cfg.domain, sites: Object.keys(sites).length }];

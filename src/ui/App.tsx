@@ -1,5 +1,5 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, CloudUpload, Download, Eye, EyeOff, FilePlus2, ListTree, Monitor, PanelRight, Plus, Redo2, Settings, Smartphone, Tablet, Undo2, X } from 'lucide-react';
+import { Check, CloudUpload, Download, Eye, EyeOff, FilePlus2, Library, ListTree, Monitor, PanelRight, Plus, Redo2, Settings, Smartphone, Tablet, Undo2, X } from 'lucide-react';
 import type { Design, PartSlug, Site } from '../lib/types';
 import { TARGET_WP_VERSION } from '../lib/types';
 import { friendlyError } from '../lib/ai/client';
@@ -21,6 +21,8 @@ import { PartPanel } from './PartPanel';
 import { MarkupView } from './MarkupView';
 import { NewSiteDialog } from './NewSiteDialog';
 import { PublishDialog } from './PublishDialog';
+import { LibraryDialog, type ImportMode } from './LibraryDialog';
+import { importLibraryItem } from '../lib/library';
 import { SettingsDialog, type SettingsSection } from './SettingsDialog';
 import { buildStarter, starterById } from '../lib/starters';
 import { Logo } from './icons';
@@ -70,6 +72,7 @@ export function App() {
   const [device, setDevice] = useState<Device>('desktop');
   const [dialog, setDialog] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const [settings, setSettings] = useState<SettingsSection | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -558,6 +561,9 @@ export function App() {
               ))}
             </div>
             <button className="btn hide-narrow" onClick={() => setDialog(true)} disabled={!!busy}><FilePlus2 size={16} /> New site</button>
+            {backend?.kind === 'server' && (
+              <button className="btn hide-narrow" onClick={() => setLibraryOpen(true)} disabled={!!busy} title="Templates, patterns, blocks and styles shared by Prepress users"><Library size={16} /> Library</button>
+            )}
             <button className="btn hide-narrow" onClick={onExport} disabled={!!busy} title="Download a WordPress block theme + content import"><Download size={16} /> Export</button>
             {backend?.kind === 'server' && (
               <button className="btn primary" onClick={() => setPublishing(true)} disabled={!!busy} title={publishedAt ? `Last published ${new Date(publishedAt).toLocaleString()}${unpublished ? ' · there are unpublished changes' : ''}` : 'Not published yet'}>
@@ -691,6 +697,32 @@ export function App() {
             replaces={!isSample}
             onClose={() => setDialog(false)}
             onStarter={(id, name, about) => startFrom(id, name, about)}
+          />
+        )}
+        {libraryOpen && (
+          <LibraryDialog
+            site={site}
+            pageId={page.id}
+            brief={brief}
+            onClose={() => setLibraryOpen(false)}
+            onImport={(item, mode: ImportMode) => {
+              try {
+                const cur = siteRef.current!;
+                const r = importLibraryItem(cur, item, mode === 'insert' ? { insertInto: page.id } : {});
+                setSite(r.site);
+                if (item.type === 'template') {
+                  setPageId(r.site.pages[0].id);
+                  setPartTarget(null);
+                  setPatternId(null);
+                  setSelected(null);
+                  if (r.brief) setBrief(r.brief);
+                }
+                setLibraryOpen(false);
+                flash(r.summary);
+              } catch (e: any) {
+                setError(String(e?.message ?? e));
+              }
+            }}
           />
         )}
         {publishing && <PublishDialog pages={site.pages.length} siteName={site.name} onPublish={doPublish} onClose={() => setPublishing(false)} />}

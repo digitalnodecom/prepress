@@ -32,6 +32,8 @@ export interface McpContext {
   localizeMedia?(site: any): Promise<{ site: any; imported: { from: string; to: string }[]; failed: { url: string; error: string }[] }>;
   importMedia?(url: string): Promise<{ url: string; file: string; reused: boolean }>;
   uploadsDir?: string;
+  /** The Prepress library client (server/library.ts). */
+  library?: import('./library.ts').LibraryClient;
   /** Screenshot a draft page in a headless browser (server/screenshot.ts). */
   viewPage?(o: { page: any; device?: 'desktop' | 'tablet' | 'phone'; section?: number; fullPage?: boolean }): Promise<{ data: string; mimeType: string; width: number; height: number; pageHeight: number; scale: number; sections: number }>;
 }
@@ -115,7 +117,7 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
   }
 
   /** Apply a change to the draft and report the result. */
-  async function change(summary: string, fn: (site: Site) => { site: Site; result?: Record<string, unknown> }) {
+  async function change(summary: string, fn: (site: Site) => { site: Site; result?: Record<string, unknown>; fields?: { brief?: string } }) {
     // External images/videos in the new content go into the media library. Download first,
     // outside the draft lock (it can take seconds), then apply the same change with local URLs.
     let media: { imported: { from: string; to: string }[]; failed: { url: string; error: string }[] } = { imported: [], failed: [] };
@@ -129,11 +131,11 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
     let out: Record<string, unknown> = {};
     const d = await store.update('mcp', (cur) => {
       e.registerCustomBlocks(cur.site.blocks ?? []);
-      let { site, result } = fn(cur.site);
+      let { site, result, fields } = fn(cur.site);
       e.registerCustomBlocks(site.blocks ?? []);
       if (media.imported.length) for (const slot of e.siteMarkups(site)) site = slot.set(site, e.replaceMediaUrls(slot.get(site), map, site.blocks));
       out = result ?? {};
-      return { site, summary };
+      return { site, summary, fields };
     });
     const mediaReport = media.imported.length || media.failed.length
       ? { media: { imported: media.imported, ...(media.failed.length ? { failed: media.failed, note: 'These links were not downloaded and still point to another site. Use another image URL (PNG, JPEG, WebP, AVIF), or import_media to check one.' } : {}) } }
@@ -503,6 +505,72 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
         };
       },
       true,
+    );
+
+    // ---------- library (prepress.digitalno.de/library) ----------
+    const lib = () => {
+      if (!ctx.library) throw new Error('The library is not available here');
+      return ctx.library;
+    };
+
+    tool(
+      'library_search',
+      'Search the Prepress library: templates (whole sites), patterns (sections), blocks (custom block types) and styles (design + theme.json) shared by Prepress users. Returns ids to use with library_import, and a preview link for each.',
+      { type: z.enum(['template', 'pattern', 'block', 'style']).optional(), query: z.string().optional(), sort: z.enum(['recent', 'popular']).optional() },
+      async ({ type, query, sort }) => {
+        const r = await lib().search({ type, q: query, sort, limit: 30 });
+        return { total: r.total, items: r.items.map((i: any) => ({ id: i.id, type: i.type, title: i.title, description: i.description, tags: i.tags, imports: i.imports, page: lib().pageUrl(i.id) })) };
+      },
+      true,
+    );
+
+    tool(
+      'library_import',
+      'Import a library item into this site (id or library link). template = REPLACES the whole site (the old draft is backed up); pattern = adds it to the site patterns and, with page, inserts it on that page; block = adds the block type; style = restyles the site. Everything is cleaned like your own input.',
+      {
+        id: z.string().describe('Library item id (10 characters) or its library URL'),
+        page: pageRef.optional().describe('pattern only: also insert it on this page'),
+        position: z.number().int().optional().describe('pattern only: section index to insert at (default: end)'),
+      },
+      async ({ id, page, position }) => {
+        const { libraryId } = await import('./library.ts');
+        const itemId = libraryId(id);
+        if (!itemId) throw new Error('Not a library item id or link');
+        const item = await lib().get(itemId, true);
+        if (item.type === 'template') store.backup();
+        return change(`Imported ${item.type} “${item.title}” from the library`, (site) => {
+          const target = page ? findPage(site, page) : undefined;
+          const r = e.importLibraryItem(site, item, { insertInto: target?.id, at: position });
+          return { site: r.site, result: { imported: { id: item.id, type: item.type, title: item.title }, note: r.summary }, ...(r.brief ? { fields: { brief: r.brief } } : {}) };
+        });
+      },
+    );
+
+    tool(
+      'library_share',
+      'Publish something from this site to the public Prepress library. template = the whole site; pattern = sections of a page (page + sections indexes) or a site pattern (pattern); block = a custom block type (block name); style = the current design + theme.json. Local media become placeholders. Only this site can later update or delete it. Ask the site owner before sharing.',
+      {
+        type: z.enum(['template', 'pattern', 'block', 'style']),
+        title: z.string(),
+        description: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+        page: pageRef.optional(),
+        sections: z.array(z.number().int()).optional(),
+        pattern: z.union([z.string(), z.number()]).optional(),
+        block: z.string().optional(),
+      },
+      async ({ type, title, description, tags, page, sections, pattern, block }) => {
+        const { site, brief } = draft() as StoredDraft & { brief?: string };
+        const meta = { title, description, tags };
+        const d =
+          type === 'template' ? e.shareTemplate(site, { ...meta, brief })
+          : type === 'style' ? e.shareStyle(site, meta)
+          : type === 'block' ? e.shareBlock(site, block ?? '', meta)
+          : pattern !== undefined ? e.sharePattern(site, findPattern(site, pattern).id, meta)
+          : e.shareSections(site, findPage(site, page ?? 'home').id, sections ?? [], meta);
+        const r = await lib().share(d);
+        return { ok: true, id: r.id, page: lib().pageUrl(r.id) };
+      },
     );
 
     tool(

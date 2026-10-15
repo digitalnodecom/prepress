@@ -382,3 +382,18 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 0; width: 100%; }
 .free-name input:focus { outline: none; }
 .free-name:focus-within { outline: 2px solid var(--accent); outline-offset: -1px; }
 .free-name .mono { color: var(--fg-3); white-space: nowrap; }
+
+/* Library dialog */
+.library-dialog { height: min(820px, 100%); }
+.library-dialog h2 { display: flex; align-items: center; gap: 8px; }
+.library-dialog .dialog-head .seg { margin-left: auto; }
+.library-filters { align-items: center; }
+.chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.library-search { margin-left: auto; display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; background: var(--surface); color: var(--fg-3); min-width: 260px; }
+.library-search input { border: 0; background: none; color: var(--fg); font: inherit; font-size: 14px; flex: 1; outline: none; }
+.library-card { cursor: default; }
+.library-card .pill { align-self: flex-start; margin: 0 4px; }
+.library-card a { color: inherit; }
+.library-actions { padding: 4px 4px 0; gap: 6px; align-items: center; }
+.library-share { display: flex; flex-direction: column; gap: 12px; }
+.library-sections { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow: auto; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }

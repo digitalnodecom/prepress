@@ -10,6 +10,7 @@
 import { getBlockType } from '@wordpress/blocks';
 import type { BlockNode, Design, SectionSpec } from '../types';
 import { expandPattern } from './patterns';
+import { sanitizeInline, sanitizeRich } from './inline';
 import { placeholderImage } from './placeholders';
 import { ensureBlocks } from './registry';
 
@@ -141,7 +142,9 @@ function normalizeAttributes(name: string, raw: Record<string, unknown> | undefi
       if (k0 !== 'placeholderLabel') opts.report?.dropped.push(`${name}.${k0}`);
       continue;
     }
-    const c = coerce(defs[k], v);
+    let c = coerce(defs[k], v);
+    // Rich text (and table cells) from untrusted input: only the inline HTML the editor itself makes.
+    if (c !== undefined && (defs[k].type === 'rich-text' || defs[k].source === 'rich-text' || defs[k].source === 'html' || (name === 'core/table' && ['head', 'body', 'foot'].includes(k)))) c = sanitizeRich(c);
     if (c !== undefined) attrs[k] = c;
   }
 
@@ -180,7 +183,7 @@ function normalizeNode(node: unknown, parent: string | null, opts: NormalizeOpti
     return normalizeNode(expanded, parent, opts);
   }
   if (!node || typeof node !== 'object') {
-    if (typeof node === 'string' && node.trim()) return [{ name: 'core/paragraph', attributes: { content: node } }];
+    if (typeof node === 'string' && node.trim()) return [{ name: 'core/paragraph', attributes: { content: sanitizeInline(node) } }];
     return [];
   }
   const n = node as any;
@@ -197,7 +200,8 @@ function normalizeNode(node: unknown, parent: string | null, opts: NormalizeOpti
     // Keep content where we can: unwrap children, or salvage text as a paragraph.
     if (kids.length) return kids.flatMap((k) => normalizeNode(k, parent, opts));
     const text = n.attributes?.content ?? n.attributes?.text;
-    return typeof text === 'string' && text.trim() ? [{ name: 'core/paragraph', attributes: { content: text } }] : [];
+    const salvaged = typeof text === 'string' ? sanitizeInline(text) : '';
+    return salvaged.trim() ? [{ name: 'core/paragraph', attributes: { content: salvaged } }] : [];
   }
 
   // A child that needs a specific parent but isn't inside it: wrap it.

@@ -4,6 +4,15 @@ This file is for the next agent or developer picking up this project. It explain
 
 Last updated: 2026-10-14 · Version: v0.3 · Target: WordPress 7.0
 
+## v0.8 — library + homepage (prepress.digitalno.de)
+
+- **Homepage** (`hosting/pages.ts`, served by the hosting API): logo, explanation, cards for Web version (coming soon until `WEB_URL` is set), Desktop app (`DOWNLOAD_MAC_URL` → `_downloads/Prepress-mac-arm64.dmg` in the bucket), Library; note about `*.prepress.digitalno.de`.
+- **Library** at `/library` (`hosting/library.ts`): types template/pattern/block/style; publish/update/delete owned by the site token (SHA-256 stored); search, type filter, sort by imports; previews (`/library/preview/:id`) with `sandbox` CSP, framable only by the library and local Prepress editors; reports (3 distinct visitors hide an item); moderation with `LIBRARY_ADMIN_TOKEN` (`POST /api/v1/library/items/:id/moderate {admin, action: hide|unhide|delete}`); limits: 1.5 MB payload/preview, 10 publishes/hour/IP.
+- **Prepress:** `src/lib/library.ts` builds items (local /uploads images → placeholders, custom blocks travel with patterns) and imports them through the normalizer; Library dialog (Browse with live sandboxed previews, Share sections/pattern/template/block/style, Yours); MCP `library_search`, `library_import` (template import backs up the draft and carries the brief), `library_share`.
+- **Security fix found on the way:** rich-text attributes weren't sanitized (AI output could carry `<img onerror>` into the site and the editor canvas). `src/lib/wp/inline.ts` now keeps only editor inline formatting, everywhere content is normalized.
+- **Desktop fix:** removed the `on_navigation` guard (it cancelled and opened every iframe — embeds, library previews — in the browser).
+- Verified: `tests/library.test.ts` (round trips, hostile items, API ownership/reports/moderation, page escaping, MCP end to end).
+
 ## v0.7 — free hosting at *.prepress.digitalno.de (live)
 
 - **Infra (live):** Scaleway project "Prepress" (isolated from the other projects), bucket `prepress` (fr-par) with a bucket policy: public `GetObject` only (no listing), writes only for IAM application `prepress-hosting` (ObjectStorageFullAccess scoped to that project) and the org owner. Server `prepress` 95.217.217.146 (Ubuntu 26.04): Caddy 2.11.7 (official repo), `prepress-hosting.service` (DynamicUser, sandboxed, 127.0.0.1:8787), ufw 22/80/443. DNS (Cloudflare, DNS-only): `prepress.digitalno.de` and `*.prepress.digitalno.de` → 95.217.217.146. Let's Encrypt via on-demand TLS gated by `/api/v1/tls-ask`.

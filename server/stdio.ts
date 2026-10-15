@@ -28,6 +28,7 @@ export async function runStdio(opts: CoreOptions & { engine: Engine }) {
     importMedia: core.importer.import,
     uploadsDir: core.uploadsDir,
     viewPage: core.viewPage,
+    library: core.library,
   })();
   await server.connect(new StdioServerTransport());
   // The client closing our stdin is how a stdio MCP session ends.

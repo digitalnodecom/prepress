@@ -18,6 +18,7 @@ export { buildThemeJson, sanitizeDesign, FONTS, FONT_SIZES, SPACING_SIZES } from
 export { generateSite } from './ai/generate';
 export { DEMO_BRIEF } from './ai/demo';
 export { STARTERS, buildStarter, starterCatalog } from './starters';
+export { shareTemplate, shareSections, sharePattern, shareBlock, shareStyle, importLibraryItem, siteValidity, LIBRARY_TYPES } from './library';
 export { externalMediaUrls, replaceMediaUrls, siteMarkups, isExternalMedia } from './wp/media';
 export { ensureBlocks } from './wp/registry';
 
