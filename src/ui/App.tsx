@@ -89,6 +89,16 @@ export function App() {
   const siteRef = useRef<Site | null>(null);
   siteRef.current = site;
 
+  // An image linked from the web couldn't be copied into the media library.
+  useEffect(() => {
+    const on = (e: Event) => {
+      const { url, error } = (e as CustomEvent).detail ?? {};
+      setError(`Couldn’t add ${String(url).slice(0, 80)} to the media library: ${error}. Upload the file instead, or use another link.`);
+    };
+    window.addEventListener('pp:media-error', on);
+    return () => window.removeEventListener('pp:media-error', on);
+  }, []);
+
   // Sample / placeholder content becomes the user's own site with their first edit
   // (then an AI's create_site no longer replaces it without asking).
   const sampleBase = useRef<Site | null>(null);

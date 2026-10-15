@@ -28,6 +28,12 @@ export interface McpContext {
   deploy(which?: string, full?: boolean): Promise<unknown[]>;
   deployTargets(): { id: string; name: string; type: string; url?: string; auto: boolean; last: unknown }[];
   siteUrl?: string;
+  /** Download external media a site links into the library (server/media.ts). */
+  localizeMedia?(site: any): Promise<{ site: any; imported: { from: string; to: string }[]; failed: { url: string; error: string }[] }>;
+  importMedia?(url: string): Promise<{ url: string; file: string; reused: boolean }>;
+  uploadsDir?: string;
+  /** Screenshot a draft page in a headless browser (server/screenshot.ts). */
+  viewPage?(o: { page: any; device?: 'desktop' | 'tablet' | 'phone'; section?: number; fullPage?: boolean }): Promise<{ data: string; mimeType: string; width: number; height: number; pageHeight: number; scale: number; sections: number }>;
 }
 
 type Site = any;
@@ -48,6 +54,8 @@ Custom blocks (define_block) are site-defined block types "prepress/<slug>" with
   {{key}} escaped value · {{#key}}…{{/key}} if truthy · {{^key}}…{{/key}} if falsy · {{{content}}} inner blocks.
 Use them in sections like any block: {"name":"prepress/pricing-card","attributes":{"price":"$9"}}. They render on the published site, in the editor, and ship inside the exported WordPress theme.
 Patterns (create_pattern): reusable sections. Synced ones are inserted with {"name":"core/block","attributes":{"ref":<id>}} and update everywhere.
+Images: link any public image URL (core/image "url", core/cover "url", core/media-text "mediaUrl", custom block image attributes); Prepress downloads it into the media library and stores the local /uploads/… URL. The write result lists media.imported / media.failed. SVG is not imported.
+Review: view_page returns a screenshot of a page (desktop/tablet/phone, whole page or one section) as visitors will see it. Look at it after changes, then fix what looks wrong.
 theme.json (patch_theme_json): deep-merged over the generated theme.json (objects merge, arrays replace, null deletes).`;
 
 const ok = (data: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] });
@@ -108,15 +116,29 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
 
   /** Apply a change to the draft and report the result. */
   async function change(summary: string, fn: (site: Site) => { site: Site; result?: Record<string, unknown> }) {
+    // External images/videos in the new content go into the media library. Download first,
+    // outside the draft lock (it can take seconds), then apply the same change with local URLs.
+    let media: { imported: { from: string; to: string }[]; failed: { url: string; error: string }[] } = { imported: [], failed: [] };
+    if (ctx.localizeMedia) {
+      const snap = draft();
+      const preview = fn(snap.site).site;
+      e.registerCustomBlocks(preview.blocks ?? []);
+      media = await ctx.localizeMedia(preview);
+    }
+    const map = Object.fromEntries(media.imported.map((m) => [m.from, m.to]));
     let out: Record<string, unknown> = {};
     const d = await store.update('mcp', (cur) => {
       e.registerCustomBlocks(cur.site.blocks ?? []);
-      const { site, result } = fn(cur.site);
+      let { site, result } = fn(cur.site);
       e.registerCustomBlocks(site.blocks ?? []);
+      if (media.imported.length) for (const slot of e.siteMarkups(site)) site = slot.set(site, e.replaceMediaUrls(slot.get(site), map, site.blocks));
       out = result ?? {};
       return { site, summary };
     });
-    return ok({ ok: true, summary, rev: d.rev, ...out, validation: validation(d.site) });
+    const mediaReport = media.imported.length || media.failed.length
+      ? { media: { imported: media.imported, ...(media.failed.length ? { failed: media.failed, note: 'These links were not downloaded and still point to another site. Use another image URL (PNG, JPEG, WebP, AVIF), or import_media to check one.' } : {}) } }
+      : {};
+    return ok({ ok: true, summary, rev: d.rev, ...out, ...mediaReport, validation: validation(d.site) });
   }
 
   const wrap =
@@ -446,6 +468,63 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
       },
       async ({ target, full }) => ({ deploys: await ctx.deploy(target ?? 'all', !!full) }),
     );
+
+    tool(
+      'view_page',
+      'See a page as visitors will: a screenshot of the current draft (the edits you just made, not the published copy). Use it to review layout, spacing, contrast, images and text fit, then fix with the edit tools and look again. Whole page by default (tall pages are scaled down); pass section (index from get_page) for a full-resolution close-up, and device to check tablet/phone.',
+      {
+        page: pageRef,
+        device: z.enum(['desktop', 'tablet', 'phone']).optional().describe('Viewport: desktop 1280px (default), tablet 820px, phone 390px'),
+        section: z.number().int().optional().describe('Only this section (0 = first)'),
+        first_screen_only: z.boolean().optional().describe('Only what is visible without scrolling'),
+      },
+      async ({ page, device, section, first_screen_only }) => {
+        if (!ctx.viewPage) throw new Error('Screenshots are not available here');
+        const { site } = draft();
+        const p = findPage(site, page);
+        const shot = await ctx.viewPage({ page: p, device, section, fullPage: !first_screen_only });
+        const sections = e.getSections(p).map((m: string, i: number) => `${i}: ${e.sectionLabel(m)}`);
+        return {
+          content: [
+            { type: 'image' as const, data: shot.data, mimeType: shot.mimeType },
+            {
+              type: 'text' as const,
+              text: JSON.stringify({
+                page: p.slug,
+                device: device ?? 'desktop',
+                ...(section !== undefined ? { section } : {}),
+                image: `${shot.width}×${shot.height}px${shot.scale < 1 ? ` (scaled to ${Math.round(shot.scale * 100)}% — use section for detail)` : ''}`,
+                pageHeight: shot.pageHeight,
+                sections,
+                note: 'The header and footer are part of the page; edit them with get_part / set_part.',
+              }),
+            },
+          ],
+        };
+      },
+      true,
+    );
+
+    tool(
+      'import_media',
+      'Download an image (or video, audio, PDF) from a public URL into the site’s media library and get its local URL to use in blocks. Content you write is imported automatically too; use this to check a link first or to reuse one file in several places.',
+      { url: z.string().describe('Public http(s) URL of a PNG, JPEG, GIF, WebP, AVIF, MP4, WebM, MP3 or PDF') },
+      async ({ url }) => {
+        if (!ctx.importMedia) throw new Error('Media import is not available here');
+        const r = await ctx.importMedia(url);
+        return { url: r.url, file: r.file, alreadyInLibrary: r.reused };
+      },
+    );
+
+    tool('list_media', 'Files in the site’s media library (local URLs to use in image/cover/media-text blocks).', {}, async () => {
+      if (!ctx.uploadsDir) return { files: [] };
+      const { readdirSync, statSync } = await import('node:fs');
+      const { join } = await import('node:path');
+      const files = readdirSync(ctx.uploadsDir)
+        .filter((f) => /\.(png|jpe?g|gif|webp|avif|mp4|webm|mp3|pdf)$/i.test(f))
+        .map((f) => ({ url: `/uploads/${f}`, bytes: statSync(join(ctx.uploadsDir!, f)).size }));
+      return { files };
+    }, true);
 
     tool('export_wordpress', 'Build the WordPress export (block theme with custom blocks and patterns + content.xml + site.json). Returns the zip\'s path on this machine (localPath) and an HTTP download path on the editor server (send the same bearer token).', {}, async () => {
       draft();

@@ -147,7 +147,8 @@ function normalizeAttributes(name: string, raw: Record<string, unknown> | undefi
 
   // Images: always resolve to a placeholder unless a usable URL was given.
   const label = String(input.placeholderLabel ?? input.alt ?? input.mediaAlt ?? 'Image');
-  const usable = (u: unknown) => typeof u === 'string' && /^(data:image\/|https?:\/\/)/.test(u) && !u.includes('example.com');
+  // Media library files (/uploads/…), web links (downloaded into the library on save) and inline images.
+  const usable = (u: unknown) => typeof u === 'string' && /^(data:image\/|https?:\/\/|\/uploads\/[^/\s]+$)/.test(u) && !u.includes('example.com');
   if (name === 'core/image' && !usable(attrs.url)) {
     attrs.url = placeholderImage(label, opts.design);
     attrs.alt = attrs.alt ?? label;
@@ -160,6 +161,8 @@ function normalizeAttributes(name: string, raw: Record<string, unknown> | undefi
   if (name === 'core/cover' && attrs.url && !usable(attrs.url)) {
     attrs.url = placeholderImage(label, opts.design, 1800, 1100);
   }
+  // Like the WordPress editor when an image is picked: a 50% overlay, not the block's default solid 100%.
+  if (name === 'core/cover' && attrs.url && attrs.dimRatio === undefined) attrs.dimRatio = 50;
   if (name === 'core/cover' && !attrs.url && !attrs.gradient && !attrs.overlayColor && !attrs.customOverlayColor) {
     attrs.gradient = 'primary-to-contrast';
     attrs.dimRatio = 100;

@@ -18,7 +18,7 @@ import {
 } from '@wordpress/block-editor';
 import { Popover, SlotFillProvider } from '@wordpress/components';
 import { ShortcutProvider } from '@wordpress/keyboard-shortcuts';
-import { useDispatch, useSelect } from '@wordpress/data';
+import { useDispatch, useRegistry, useSelect } from '@wordpress/data';
 import '@wordpress/format-library';
 import blockLibraryStyle from '@wordpress/block-library/build-style/style.css?inline';
 import blockLibraryEditor from '@wordpress/block-library/build-style/editor.css?inline';
@@ -28,6 +28,7 @@ import componentsStyle from '@wordpress/components/build-style/style.css?inline'
 import type { Design } from '../../lib/types';
 import { buildThemeJson, compileGlobalStyles, googleFontsUrl } from '../../lib/wp/design';
 import { ensureBlocks } from '../../lib/wp/registry';
+import { isExternalMedia, mediaAttrs } from '../../lib/wp/media';
 import { inserterPatterns, PATTERN_CATEGORY } from '../../lib/wp/inserterPatterns';
 import { uploadMedia } from '../../lib/backend';
 import { installMediaLibrary } from './MediaLibrary';
@@ -242,6 +243,7 @@ export function EditorProvider({ content, design, canUpload, info, blocks: custo
           }}
         >
           <BlockEditorKeyboardShortcuts.Register />
+          {canUpload && <MediaLocalizer customBlocks={customBlocks} />}
           {children}
           <Popover.Slot />
         </BlockEditorProvider>
@@ -262,6 +264,59 @@ async function mediaUpload({ filesList, onFileChange, onError }: { filesList: Fi
       onError?.(`${file.name}: ${e?.message ?? 'upload failed'}`);
     }
   }
+}
+
+/**
+ * Images linked from the web (inserted "from URL", pasted, typed into a block)
+ * are downloaded into the media library (POST /api/media/import) and the block
+ * is pointed at the local copy. Failures are reported with a `pp:media-error` event.
+ */
+function MediaLocalizer({ customBlocks }: { customBlocks?: EditorProps['blocks'] }) {
+  const attrs = useMemo(() => mediaAttrs(customBlocks ?? []), [customBlocks]);
+  const blocks = useSelect((select) => (select(blockEditorStore) as any).getBlocks(), []);
+  const registry = useRegistry();
+  const { updateBlockAttributes } = useDispatch(blockEditorStore) as any;
+  const inflight = useRef(new Map<string, Promise<string | null>>());
+  const failed = useRef(new Set<string>());
+
+  useEffect(() => {
+    const found: { clientId: string; key: string; url: string }[] = [];
+    const walk = (list: any[]) => {
+      for (const b of list) {
+        for (const key of attrs[b.name] ?? []) {
+          const url = b.attributes?.[key];
+          if (isExternalMedia(url) && !failed.current.has(url)) found.push({ clientId: b.clientId, key, url });
+        }
+        if (b.innerBlocks?.length) walk(b.innerBlocks);
+      }
+    };
+    walk(blocks);
+    for (const { clientId, key, url } of found) {
+      if (!inflight.current.has(url)) {
+        inflight.current.set(
+          url,
+          fetch('/api/media/import', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url }) })
+            .then(async (r) => {
+              const j = await r.json().catch(() => ({}));
+              if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+              return j.url as string;
+            })
+            .catch((e) => {
+              failed.current.add(url);
+              window.dispatchEvent(new CustomEvent('pp:media-error', { detail: { url, error: String(e?.message ?? e) } }));
+              return null;
+            }),
+        );
+      }
+      void inflight.current.get(url)!.then((local) => {
+        if (!local) return;
+        const b = ((registry as any).select(blockEditorStore) as any).getBlock(clientId);
+        if (b?.attributes?.[key] !== url) return; // changed meanwhile
+        updateBlockAttributes(clientId, { [key]: local, ...(key === 'url' || key === 'mediaUrl' ? { id: undefined, mediaId: undefined } : {}) });
+      });
+    }
+  }, [blocks, attrs, registry, updateBlockAttributes]);
+  return null;
 }
 
 export function Canvas({ template = false }: { template?: boolean }) {

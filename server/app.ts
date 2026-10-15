@@ -36,6 +36,8 @@ import { ConflictError, DraftStore, withFileLock } from './store.ts';
 import { createMcpHandler } from './mcp.ts';
 import { createDeployer } from './deploy.ts';
 import { createClients } from './clients.ts';
+import { createMediaImporter, localizeSite } from './media.ts';
+import { screenshot, type Device } from './screenshot.ts';
 
 /** The headless site engine (src/lib/engine.ts). Injected so tests and dev can load it from source. */
 export type Engine = typeof import('../src/lib/engine');
@@ -60,6 +62,8 @@ export interface ServerOptions {
   mcpToken?: string;
   /** false disables the MCP endpoint. */
   mcp?: boolean;
+  /** Test hooks for media import (server/media.ts): fake fetch / DNS. */
+  mediaImport?: { fetch?: typeof fetch; resolve?: (host: string) => Promise<string[]> };
   /** Home folder whose AI apps' configs "Connect" edits (tests use a temp folder). Default: the user's home. */
   homeDir?: string;
   /** How to start `prepress mcp` (stdio) for this site; shown in the editor. Absent in dev. */
@@ -139,7 +143,7 @@ export interface PublishOptions {
   targets?: string[];
 }
 
-export type CoreOptions = Pick<ServerOptions, 'dataDir' | 'outDir' | 'siteUrl' | 'engine'>;
+export type CoreOptions = Pick<ServerOptions, 'dataDir' | 'outDir' | 'siteUrl' | 'engine' | 'mediaImport'>;
 
 /**
  * Everything that works on a site's data folder without HTTP: the draft store,
@@ -240,12 +244,31 @@ export function createSiteCore(opts: CoreOptions) {
   }
 
 
-  return { dir, outDir, uploadsDir, manifestFile, exportsDir, store, deployer, readManifest, writeStatic, publishSite, exportWordPress, deploy };
+  const importer = createMediaImporter({ dataDir: dir, uploadsDir, ...opts.mediaImport });
+  /** Download every external image/video a site links into the media library and point the blocks at the copies. */
+  const localizeMedia = async (site: any) => {
+    if (!opts.engine) return { site, imported: [], failed: [] };
+    opts.engine.registerCustomBlocks(site.blocks ?? []);
+    return localizeSite(site, opts.engine as any, importer);
+  };
+
+  /** Screenshot a page of the current draft (MCP view_page). */
+  async function viewPage(o: { page: any; device?: Device; section?: number; fullPage?: boolean }) {
+    const engine = opts.engine;
+    if (!engine) throw new Error('Rendering is not available here');
+    const draft = store.read();
+    if (!draft?.site?.pages) throw new Error('There is no site yet');
+    engine.registerCustomBlocks(draft.site.blocks ?? []);
+    const html = engine.renderPage(draft.site, o.page, { markSections: true });
+    return screenshot({ html, uploadsDir, device: o.device, section: o.section, fullPage: o.fullPage });
+  }
+
+  return { importer, localizeMedia, viewPage, dir, outDir, uploadsDir, manifestFile, exportsDir, store, deployer, readManifest, writeStatic, publishSite, exportWordPress, deploy };
 }
 
 export function createHandler(opts: ServerOptions) {
   const core = createSiteCore(opts);
-  const { dir, outDir, uploadsDir, manifestFile, exportsDir, store, deployer, readManifest, writeStatic, publishSite, exportWordPress, deploy } = core;
+  const { importer, localizeMedia, viewPage, dir, outDir, uploadsDir, manifestFile, exportsDir, store, deployer, readManifest, writeStatic, publishSite, exportWordPress, deploy } = core;
   // Writes by a `prepress mcp` process on the same folder reach open editors too.
   store.watch();
   const isAdmin = (url: URL) => url.searchParams.get('admin') === '1';
@@ -267,7 +290,7 @@ export function createHandler(opts: ServerOptions) {
     return !!token && h.startsWith('Bearer ') && timingSafeEqual(sha(h.slice(7).trim()), sha(token));
   };
 
-  const mcp = mcpEnabled && opts.engine ? createMcpHandler({ store, engine: opts.engine, publishSite, exportWordPress, deploy, deployTargets: deployer.view, siteUrl: opts.siteUrl }) : null;
+  const mcp = mcpEnabled && opts.engine ? createMcpHandler({ store, engine: opts.engine, publishSite, exportWordPress, deploy, deployTargets: deployer.view, siteUrl: opts.siteUrl, localizeMedia, importMedia: importer.import, uploadsDir, viewPage }) : null;
 
   // ---------- API ----------
 
@@ -386,6 +409,17 @@ export function createHandler(opts: ServerOptions) {
       const file = `${stem}-${randomBytes(4).toString('hex')}${ext}`;
       writeFileSync(join(uploadsDir, file), buf);
       return json(res, 200, { url: `/uploads/${file}`, id: file, mime: MIME[ext] });
+    }
+    if (route === 'POST /api/media/import') {
+      // Editor: an image linked by URL (inserted, pasted) becomes a media library file.
+      const { url } = (await readJson(req)) ?? {};
+      if (typeof url !== 'string' || url.length > 4096) return json(res, 400, { error: 'Expected { url }' });
+      try {
+        const r = await importer.import(url);
+        return json(res, 200, { url: r.url, id: r.file, mime: MIME[extname(r.file)], reused: r.reused });
+      } catch (e: any) {
+        return json(res, 422, { error: String(e?.message ?? e) });
+      }
     }
     if (route === 'GET /api/media') {
       const items = readdirSync(uploadsDir)
