@@ -8,16 +8,17 @@ import { validateMarkup } from '../src/lib/wp/markup';
 import { exportSite } from '../src/lib/wp/export';
 import JSZip from 'jszip';
 import { contrastRatio, sanitizeDesign, textOn } from '../src/lib/wp/design';
+import { lintSet } from '../src/lib/setLint';
 
 /** What each set must look like once built. */
 const EXPECT: Record<keyof typeof SETS, { pages: string[]; headerBlock: string; preview: { item: string; contains: string[] } }> = {
-  kinetic: { pages: ['home', 'work', 'studio', 'contact'], headerBlock: 'wp:prepress/kinetic-pill', preview: { item: 'pattern:hero', contains: ['kx-marquee', '--wp--preset--font-size--mega', 'Syne'] } },
-  garden: { pages: ['home', 'menu', 'evenings', 'visit', 'private-dining'], headerBlock: 'ng-header-cta', preview: { item: 'pattern:hero', contains: ['ng-glow', 'ng-arch', 'Cormorant+Garamond', 'DM+Mono', 'color-scheme:dark'] } },
-  showroom: { pages: ['home', 'design', 'specs', 'buy'], headerBlock: 'wp:navigation', preview: { item: 'pattern:hero', contains: ['sr-fold', 'sr-price', '--wp--preset--font-size--hero', 'Inter'] } },
+  kinetic: { pages: ['home', 'work', 'studio', 'contact'], headerBlock: 'is-style-kinetic-header-cta', preview: { item: 'pattern:hero', contains: ['kx-marquee', 'is-style-kinetic-display', '.wp-block-heading.is-style-kinetic-display::after{', '--wp--preset--font-size--mega', 'Syne'] } },
+  garden: { pages: ['home', 'menu', 'evenings', 'visit', 'private-dining'], headerBlock: 'is-style-garden-desktop-only', preview: { item: 'pattern:hero', contains: ['ng-glow', 'ng-arch', 'Cormorant+Garamond', 'DM+Mono', 'color-scheme:dark'] } },
+  showroom: { pages: ['home', 'design', 'specs', 'buy'], headerBlock: 'is-style-showroom-product-bar', preview: { item: 'pattern:hero', contains: ['sr-fold', 'is-style-showroom-capsule', 'is-style-showroom-pill', '--wp--preset--font-size--hero', 'Inter'] } },
   fx: { pages: ['home'], headerBlock: '', preview: { item: 'block:fx-starfield', contains: ['fx-stars', '@media (prefers-reduced-motion:no-preference)'] } },
-  hut: { pages: ['home'], headerBlock: 'hp-header', preview: { item: 'pattern:hero', contains: ['hp-pass', 'Bebas+Neue', 'EB+Garamond'] } },
-  chorus: { pages: ['home'], headerBlock: 'ch-header', preview: { item: 'pattern:hero', contains: ['ch-hero', 'data-ui', 'Bricolage+Grotesque'] } },
-  paper: { pages: ['home', 'essays', 'on-slow-software', 'about', 'subscribe'], headerBlock: 'pe-header-cta', preview: { item: 'pattern:essay', contains: ['pe-lede', 'pe-note', '--wp--preset--font-family--mono', 'IBM+Plex+Mono', 'Newsreader'] } },
+  hut: { pages: ['home'], headerBlock: 'is-style-hut-header', preview: { item: 'pattern:hero', contains: ['is-style-hut-passport', 'hp-stampbox', 'Bebas+Neue', 'EB+Garamond'] } },
+  chorus: { pages: ['home'], headerBlock: 'is-style-chorus-header', preview: { item: 'pattern:hero', contains: ['ch-hero', 'data-ui', 'Bricolage+Grotesque'] } },
+  paper: { pages: ['home', 'essays', 'on-slow-software', 'about', 'subscribe'], headerBlock: 'is-style-paper-desktop-only', preview: { item: 'pattern:essay', contains: ['is-style-paper-lede', 'p.is-style-paper-lede::first-letter{', 'is-style-paper-sidenote', '--wp--preset--font-family--mono', 'IBM+Plex+Mono', 'Newsreader'] } },
 };
 
 for (const [key, set] of Object.entries(SETS) as [keyof typeof SETS, (typeof SETS)[keyof typeof SETS]][]) {
@@ -29,6 +30,21 @@ for (const [key, set] of Object.entries(SETS) as [keyof typeof SETS, (typeof SET
       expect(built.report).toEqual([]);
       expect(siteValidity(built.site)).toBe(0);
       for (const p of built.site.pages) expect(validateMarkup(p.content).invalid, p.slug).toEqual([]);
+    });
+
+    test('follows the theme system (docs/THEME-SYSTEM.md)', () => {
+      expect(lintSet(set as any)).toEqual([]);
+    });
+
+    test('block styles: every one is used, and a template import brings them', () => {
+      const styles = (set as any).blockStyles ?? [];
+      const all = [...built.site.pages.map((p) => p.content), built.site.header, built.site.footer].join('\n');
+      for (const d of styles) expect(all, d.name).toContain(`is-style-${d.name}`);
+      const template = built.items.find((i) => i.key === 'template');
+      if (template) {
+        const r = importLibraryItem(buildStarter('blank').site, { type: 'template', title: 't', payload: template.draft.payload });
+        expect((r.site.blockStyles ?? []).map((d) => d.name).sort()).toEqual(styles.map((d: any) => d.name).sort());
+      }
     });
 
     test('every block is used by a pattern, every pattern by the template', () => {

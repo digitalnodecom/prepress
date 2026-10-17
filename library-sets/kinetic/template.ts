@@ -1,13 +1,10 @@
 /** Kinetic Grotesk — the full-site template, composed from the set's patterns. */
-import type { BlockNode } from '../../src/lib/types';
-import { b, k, p, section } from './patterns';
-
-/** A page is a list of pattern keys and/or inline sections. */
-export type PageSpec = { title: string; slug: string; sections: (string | BlockNode)[] };
+import type { PageSpec } from '../kit';
+import { display, p, section } from './patterns';
 
 const title = (eyebrow: string, text: string, lead: string) =>
   section('Page title', 'paper', [
-    k('display', { eyebrow, text, size: 'mega', primary: true, dot: true, align: 'wide' }),
+    display(eyebrow, text),
     p(lead, { align: 'wide', fontSize: 'large' }),
   ], { top: 70, bottom: 50 });
 

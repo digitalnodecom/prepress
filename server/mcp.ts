@@ -23,7 +23,7 @@ export interface McpContext {
   store: DraftStore;
   engine: Engine;
   publishSite(by: string, opt?: { deploy?: boolean; targets?: string[] }): Promise<unknown>;
-  exportWordPress(): Promise<{ file: string; path: string; localPath: string; stats: unknown }>;
+  exportWordPress(opts?: { blocks?: 'theme' | 'plugin' }): Promise<{ file: string; path: string; localPath: string; stats: unknown }>;
   /** Push the published files to deploy targets (server/deploy.ts). */
   deploy(which?: string, full?: boolean): Promise<unknown[]>;
   deployTargets(): { id: string; name: string; type: string; url?: string; auto: boolean; last: unknown }[];
@@ -51,6 +51,13 @@ Content shape: a page is a list of sections. Each section is either
   - a block tree:   {"name":"core/group","attributes":{...},"innerBlocks":[...]}.
 Use preset slugs, never raw values: "backgroundColor":"primary", "fontSize":"large", spacing "var:preset|spacing|50".
 Unknown blocks/attributes are dropped and reported back in "report" — read it and fix your input.
+
+Which block (read get_guidelines before making templates, blocks, block styles or CSS) — first that works:
+  1. a core block and its own settings (colour, typography, spacing, border, shadow, layout);
+  2. a core block + a block style (define_block_style; className "is-style-<name>"): named looks users can pick or remove;
+  3. a pattern of core blocks + block styles (records like menu items, hours, bylines, stats stay core so text edits inline);
+  4. a custom block — only art (SVG/drawing), interactive (CSS state) or an effect wrapper whose text is inner blocks.
+CSS layers: tokens (theme.json settings) · element/core-block defaults (patch_theme_json styles.elements / styles.blocks) · block styles · custom block css · site CSS (styles.css: globals only). Never raw colours, fonts or radii: var(--wp--preset--color--<slug>), var(--wp--preset--font-family--heading|body|mono), var(--wp--custom--radius--sm|md|lg|pill). No className other than is-style-*.
 
 Custom blocks (define_block) are site-defined block types "prepress/<slug>" with typed attributes and an HTML template:
   {{key}} escaped value · {{#key}}…{{/key}} if truthy · {{^key}}…{{/key}} if falsy · {{{content}}} inner blocks.
@@ -113,7 +120,9 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
     for (const p of site.patterns ?? []) check(`pattern:${p.slug}`, p.content);
     const known = new Set((site.patterns ?? []).filter((p: any) => p.synced).map((p: any) => p.id));
     const brokenRefs = [...JSON.stringify(site).matchAll(/wp:block \{\\"ref\\":(\d+)/g)].map((m) => Number(m[1])).filter((id) => !known.has(id));
-    return { blocks, invalid, ...(brokenRefs.length ? { brokenPatternRefs: [...new Set(brokenRefs)] } : {}) };
+    // Theme-system warnings (docs/THEME-SYSTEM.md): stray classes, raw colours/radii, CSS in the wrong layer.
+    const warnings = e.lintSite(site, (m: string) => e.markupToNodes(m));
+    return { blocks, invalid, ...(brokenRefs.length ? { brokenPatternRefs: [...new Set(brokenRefs)] } : {}), ...(warnings.length ? { warnings } : {}) };
   }
 
   /** Apply a change to the draft and report the result. */
@@ -208,13 +217,17 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
         partOnlyBlocks: e.PART_BLOCKS.filter((b: string) => !(e.AI_BLOCKS as readonly string[]).includes(b)),
         sectionPatterns: e.patternCatalogForPrompt(),
         customBlocks: site.blocks ?? [],
-        sitePatterns: (site.patterns ?? []).map((p: any) => ({ id: p.id, slug: p.slug, title: p.title, synced: p.synced, insertWith: p.synced ? { name: 'core/block', attributes: { ref: p.id } } : 'use get_pattern content or create a section' })),
+        blockStyles: (site.blockStyles ?? []).map((d: any) => ({ name: d.name, label: d.label, blockTypes: d.blockTypes, useWith: { className: `is-style-${d.name}` } })),
+        builtInBlockStyles: { 'core/button': ['outline'], 'core/separator': ['wide', 'dots'], 'core/image': ['rounded'] },
+        sitePatterns: (site.patterns ?? []).map((p: any) => ({ id: p.id, slug: p.slug, title: p.title, role: p.role, synced: p.synced, insertWith: p.synced ? { name: 'core/block', attributes: { ref: p.id } } : 'use get_pattern content or create a section' })),
         presets: {
           colors: (tj.settings?.color?.palette ?? []).map((c: any) => c.slug),
           gradients: (tj.settings?.color?.gradients ?? []).map((g: any) => g.slug),
           fontSizes: (tj.settings?.typography?.fontSizes ?? []).map((f: any) => f.slug),
           fontFamilies: (tj.settings?.typography?.fontFamilies ?? []).map((f: any) => f.slug),
           spacing: (tj.settings?.spacing?.spacingSizes ?? []).map((s: any) => `var:preset|spacing|${s.slug}`),
+          shadows: (tj.settings?.shadow?.presets ?? []).map((s: any) => `var:preset|shadow|${s.slug}`),
+          cssTokens: ['var(--wp--custom--radius--sm|md|lg|pill)', 'var(--wp--preset--color--<slug>)', 'var(--wp--preset--font-family--heading|body|mono)', 'var(--wp--preset--font-size--<slug>)', 'var(--wp--preset--spacing--<slug>)'],
         },
         fonts: e.TEXT_FONT_KEYS,
         monoFonts: e.MONO_FONT_KEYS,
@@ -389,7 +402,7 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
     // ---------- custom blocks ----------
     tool(
       'define_block',
-      'Create or replace a custom block type "prepress/<slug>". attributes: {key: {type: string|number|boolean, default?, label?, control?: text|textarea|richtext|url|image|toggle|number|select, options?}}. template: HTML with {{key}}, {{#key}}…{{/key}}, {{^key}}…{{/key}}, {{{content}}} (inner blocks). css: optional, prefer preset vars like var(--wp--preset--color--primary).',
+      'Create or replace a custom block type "prepress/<slug>" — only when core blocks + a block style can\'t do it (get_guidelines): kind "art" (generated SVG/drawing), "interactive" (CSS state with inputs) or "effect" (motion around content; its text goes in inner blocks via {{{content}}}). attributes: {key: {type: string|number|boolean, default?, label?, control?: text|textarea|richtext|url|image|toggle|number|select, options?}}. template: HTML with {{key}}, {{#key}}…{{/key}}, {{^key}}…{{/key}}, {{{content}}} (inner blocks). css: optional, prefer preset vars like var(--wp--preset--color--primary).',
       {
         name: z.string(),
         title: z.string(),
@@ -399,6 +412,7 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
         attributes: z.record(z.string(), z.any()).optional(),
         template: z.string(),
         css: z.string().optional(),
+        kind: z.enum(['art', 'interactive', 'effect']).optional(),
         innerBlocks: z.object({ allowed: z.array(z.string()).optional(), template: z.array(z.any()).optional() }).optional(),
       },
       (args) =>
@@ -411,6 +425,30 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
     tool('delete_block', 'Delete a custom block type. If it is used anywhere, pass removeUses: true to also delete its instances.', { name: z.string(), removeUses: z.boolean().optional() }, ({ name, removeUses }) =>
       change(`Deleted block ${name}`, (site) => ({ site: e.deleteBlock(site, name.includes('/') ? name : `prepress/${name}`, !!removeUses) })),
     );
+
+    // ---------- block styles ----------
+    tool(
+      'define_block_style',
+      'Create or replace a block style: a named look for core (or custom) blocks that users pick or remove in the block\'s Styles panel (stored as className "is-style-<name>"). Prefer this over a custom block for looks the block settings can\'t express (dot leaders, a plate treatment, a scrolling reel, tiles). styles: theme.json-shaped root styles (color, typography, spacing, border, shadow, dimensions) — editable later in WordPress Global Styles. css: the rest; bare declarations apply to the block, "& img { … }" nests, @media may wrap either. Use tokens only: var(--wp--preset--color--<slug>), var(--wp--custom--radius--sm|md|lg|pill), var(--wp--preset--font-family--heading|body|mono).',
+      {
+        name: z.string(),
+        label: z.string(),
+        blockTypes: z.array(z.string()),
+        styles: z.record(z.string(), z.any()).optional(),
+        css: z.string().optional(),
+      },
+      (args) =>
+        change(`Defined block style ${args.name}`, (site) => {
+          const { site: next, style } = e.defineBlockStyle(site, args);
+          return { site: next, result: { blockStyle: style, useWith: { className: `is-style-${style.name}` } } };
+        }),
+    );
+
+    tool('delete_block_style', 'Delete a block style. Blocks that use it keep the class and fall back to their plain look.', { name: z.string() }, ({ name }) =>
+      change(`Deleted block style ${name}`, (site) => ({ site: e.deleteBlockStyle(site, name.replace(/^is-style-/, '')), result: { usedIn: e.blockStyleUsage(site, name.replace(/^is-style-/, '')) } })),
+    );
+
+    tool('get_guidelines', 'The rules for building with Prepress (read before making templates, custom blocks, block styles or CSS): which block to use, where CSS lives, how patterns combine.', {}, () => ({ guidelines: e.THEME_GUIDELINES }), true);
 
     // ---------- patterns ----------
     tool('create_pattern', 'Create a reusable pattern from sections. synced: true = one shared copy (insert with {"name":"core/block","attributes":{"ref":id}}); false = a starting point in the inserter.', { title: z.string(), slug: z.string().optional(), description: z.string().optional(), synced: z.boolean().optional(), sections: sectionsSchema }, ({ title, slug, description, synced, sections }) =>
@@ -595,9 +633,9 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
       return { files };
     }, true);
 
-    tool('export_wordpress', 'Build the WordPress export (block theme with custom blocks and patterns + content.xml + site.json). Returns the zip\'s path on this machine (localPath) and an HTTP download path on the editor server (send the same bearer token).', {}, async () => {
+    tool('export_wordpress', 'Build the WordPress export (block theme with block styles and patterns + content.xml + site.json). blocks: "theme" (default) puts custom blocks inside the theme; "plugin" puts them in a separate <site>-blocks plugin so they survive a theme switch (and the theme meets the WordPress.org directory rules). Returns the zip\'s path on this machine (localPath) and an HTTP download path on the editor server (send the same bearer token).', { blocks: z.enum(['theme', 'plugin']).optional() }, async ({ blocks }) => {
       draft();
-      return ctx.exportWordPress();
+      return ctx.exportWordPress({ blocks });
     });
 
     return server;

@@ -4,73 +4,86 @@
  * design, slow software and the craft of making things.
  */
 import type { BlockNode } from '../../src/lib/types';
+import { b, cols as kitCols, h, is, p, section as kitSection, SP, type SetPattern } from '../kit';
 
+export { b, h, p, SP };
 type Tone = 'paper' | 'tint' | 'ink' | 'oxblood';
-const TONE: Record<Tone, { backgroundColor: string; textColor: string }> = {
-  paper: { backgroundColor: 'base', textColor: 'contrast' },
-  tint: { backgroundColor: 'muted', textColor: 'contrast' },
-  ink: { backgroundColor: 'contrast', textColor: 'base' },
-  oxblood: { backgroundColor: 'accent', textColor: 'base' },
+const TONE: Record<Tone, { bg: string; text: string }> = {
+  paper: { bg: 'base', text: 'contrast' },
+  tint: { bg: 'muted', text: 'contrast' },
+  ink: { bg: 'contrast', text: 'base' },
+  oxblood: { bg: 'accent', text: 'base' },
 };
-export const SP = (n: number) => `var:preset|spacing|${n}`;
 
-export const b = (name: string, attributes: Record<string, unknown> = {}, innerBlocks: BlockNode[] = []): BlockNode => ({ name, attributes, ...(innerBlocks.length ? { innerBlocks } : {}) });
 export const pe = (slug: string, attributes: Record<string, unknown> = {}) => b(`prepress/paper-${slug}`, attributes);
-export const p = (content: string, attributes: Record<string, unknown> = {}) => b('core/paragraph', { content, ...attributes });
-export const h = (content: string, level: number, attributes: Record<string, unknown> = {}) => b('core/heading', { content, level, ...attributes });
 /** A small mono label: kicker, section name, fine print. */
 export const label = (content: string, attributes: Record<string, unknown> = {}) =>
   p(content, { fontFamily: 'mono', fontSize: 'small', style: { typography: { letterSpacing: '0.14em', textTransform: 'uppercase' } }, ...attributes });
 const deck = (content: string, attributes: Record<string, unknown> = {}) => p(content, { fontSize: 'large', style: { typography: { fontStyle: 'italic', lineHeight: '1.45' } }, ...attributes });
 const button = (text: string, url: string, attributes: Record<string, unknown> = {}) => b('core/buttons', {}, [b('core/button', { text, url, ...attributes })]);
 const cols = (widths: string[], children: BlockNode[][], gap = 70, attrs: Record<string, unknown> = {}) =>
-  b('core/columns', { align: 'wide', style: { spacing: { blockGap: { left: SP(gap), top: SP(50) } } }, ...attrs }, children.map((c, i) => b('core/column', widths[i] ? { width: widths[i] } : {}, c)));
+  kitCols(widths, children, { style: { spacing: { blockGap: { left: SP(gap), top: SP(50) } } }, ...attrs });
 
 /** A full-width section in one of the four tones. */
 export function section(name: string, tone: Tone, children: BlockNode[], pad: { top?: number; bottom?: number; gap?: number } = {}): BlockNode {
-  return b(
-    'core/group',
-    {
-      metadata: { name },
-      align: 'full',
-      ...TONE[tone],
-      style: { spacing: { padding: { top: SP(pad.top ?? 80), bottom: SP(pad.bottom ?? 80), left: SP(50), right: SP(50) }, margin: { top: '0', bottom: '0' }, blockGap: SP(pad.gap ?? 50) } },
-      layout: { type: 'constrained' },
-    },
-    children,
-  );
+  return kitSection(name, TONE[tone], children, pad);
 }
 
-const row = (number: string, kicker: string, title: string, date: string, url = '/essays/') => pe('index-row', { number, kicker, title, date, url });
+// ---------- records: core blocks + the set's block styles (style.ts) ----------
 
-export interface SetPattern {
-  key: string;
-  title: string;
-  description: string;
-  tags: string[];
-  sections: BlockNode[];
-}
+/** Newspaper nameplate between double rules: date line, the name (the page's h1) and a motto. */
+const masthead = (o: { name?: string; dateline?: string; place?: string; issue?: string; motto?: string } = {}) =>
+  b('core/group', { align: 'wide', className: is('paper-masthead'), style: { spacing: { blockGap: '0' } }, layout: { type: 'default' } }, [
+    b('core/group', { layout: { type: 'flex', justifyContent: 'space-between', flexWrap: 'nowrap' } }, [
+      p(o.dateline ?? 'Thursday, 15 October 2026'),
+      p(o.place ?? 'Written in Trieste'),
+      p(o.issue ?? 'No. 142'),
+    ]),
+    h(o.name ?? 'The Margin', 1, { fontSize: 'nameplate' }),
+    p(o.motto ?? 'A weekly letter on design, slow software and the craft of making things.'),
+  ]);
+/** The opening paragraph: accent drop cap, the first <strong> words set as a small-caps run-in. */
+const lede = (runin: string, text: string) => p(`<strong>${runin}</strong> ${text}`, { className: is('paper-lede') });
+/** A line lifted from the text: "rule" (between rules) or "centred" (under a fleuron). */
+export const pullquote = (quote: string, look: 'rule' | 'centred', citation = '') => b('core/pullquote', { value: quote, ...(citation ? { citation } : {}), className: is(`paper-${look}`) });
+/** A numbered margin note: put it right after its paragraph (which carries the matching <sup>). */
+const note = (number: string, text: string) => b('core/group', { className: is('paper-sidenote'), layout: { type: 'default' } }, [p(`<strong>${number}</strong>${text}`)]);
+const byline = (author = 'Ana Novak', role = 'Editor', date = '15 October 2026', read = '9 min read') =>
+  b('core/group', { className: is('paper-byline'), layout: { type: 'flex', justifyContent: 'space-between', flexWrap: 'wrap' } }, [p(`By <strong>${author}</strong>, ${role}`), p(`${date} · ${read}`)]);
+/** A section break: asterism ⁂, fleuron ❦ or a double rule. */
+export const ornament = (kind: 'asterism' | 'fleuron' | 'double', attributes: Record<string, unknown> = {}) => b('core/separator', { className: is(`paper-${kind}`), ...attributes });
+/** One archive / contents entry: number, kicker, title (linked) — dot leader — date. */
+const row = (number: string, kicker: string, title: string, date: string, url = '/essays/') =>
+  b('core/group', { className: is('paper-index-row'), layout: { type: 'default' } }, [
+    p(number),
+    b('core/group', { layout: { type: 'default' } }, [
+      p(kicker),
+      b('core/group', { layout: { type: 'flex', flexWrap: 'nowrap' } }, [h(url ? `<a href="${url}">${title}</a>` : title, 3), p(date)]),
+    ]),
+  ]);
+const rows = (list: BlockNode[]) => b('core/group', { layout: { type: 'default' }, style: { spacing: { blockGap: '0' } } }, list);
 
 const PICS = 'https://prepress.s3.fr-par.scw.cloud/_library/the-margin';
 /** A photograph printed like a plate in the letter: black and white, multiplied into the paper, caption in mono. */
 const plate = (file: string, alt: string, caption: string, attributes: Record<string, unknown> = {}) =>
-  b('core/image', { url: `${PICS}/the-margin-${file}.jpg`, alt, caption, className: 'pe-plate', ...attributes });
+  b('core/image', { url: `${PICS}/the-margin-${file}.jpg`, alt, caption, className: is('paper-plate'), ...attributes });
 
 export const PATTERNS: SetPattern[] = [
   {
     key: 'front-page',
+    role: 'hero',
     title: 'Paper front page',
     description: 'A newspaper front page: masthead between double rules, then the lead story — kicker, headline, italic deck, byline and a link — beside an engraved sun.',
     tags: ['hero', 'masthead', 'editorial'],
     sections: [
       section('Front page', 'paper', [
-        pe('masthead', { align: 'wide' }),
+        masthead(),
         cols(['60%', '40%'], [
           [
             label('This week’s essay', { textColor: 'accent' }),
             h('On slow software', 2, { fontSize: 'xxx-large' }),
             deck('The programs we keep for decades are quiet, a little stubborn and never in a hurry. What they know that the rest of our tools forgot.'),
-            pe('byline', { author: 'Ana Novak', role: 'Editor', date: '15 October 2026', read: '9 min read' }),
+            byline(),
             button('Read the essay →', '/on-slow-software/'),
           ],
           [pe('engraving', { motif: 'sun', size: 'l', caption: 'Fig. 1 — The patient sun' })],
@@ -80,14 +93,15 @@ export const PATTERNS: SetPattern[] = [
   },
   {
     key: 'contents',
+    role: 'list',
     title: 'Paper contents',
     description: 'An issue’s table of contents: a mono label and numbered entries joined to their page by dot leaders.',
     tags: ['contents', 'index', 'list'],
     sections: [
       section('In this issue', 'paper', [
-        pe('ornament', { kind: 'double' }),
+        ornament('double'),
         label('In this issue — No. 142', { style: { typography: { letterSpacing: '0.14em', textTransform: 'uppercase', textAlign: 'center' } } }),
-        b('core/group', { layout: { type: 'default' }, style: { spacing: { blockGap: '0' } } }, [
+        rows([
           row('I', 'Essay', 'On slow software', 'p. 1', '/on-slow-software/'),
           row('II', 'Notebook', 'Seven tools I have used for ten years', 'p. 4'),
           row('III', 'Letters', 'You wrote back about kitchen timers', 'p. 6', '/#letters'),
@@ -98,12 +112,13 @@ export const PATTERNS: SetPattern[] = [
   },
   {
     key: 'briefs',
+    role: 'features',
     title: 'Paper briefs',
     description: 'Three short pieces side by side on a tinted band — a small engraving, mono kicker, headline, a two-line deck and a read link — under a fleuron.',
     tags: ['columns', 'teasers', 'editorial'],
     sections: [
       section('Briefs', 'tint', [
-        pe('ornament', { kind: 'fleuron', align: 'wide' }),
+        ornament('fleuron', { align: 'wide' }),
         cols(['', '', ''], [
           [pe('engraving', { motif: 'compass', size: 's', position: 'left' }), label('Notebook', { textColor: 'accent' }), h('Seven tools I have used for ten years', 3, { fontSize: 'x-large' }), p('A text editor, a notebook, a calendar on paper and four small programs that never changed their minds.'), p('<a href="/essays/">Read →</a>', { fontFamily: 'mono', fontSize: 'small' })],
           [pe('engraving', { motif: 'sun', size: 's', position: 'left' }), label('Workshop', { textColor: 'accent' }), h('The case for a boring settings page', 3, { fontSize: 'x-large' }), p('Every toggle is a question you didn’t answer. A short defence of software with opinions.'), p('<a href="/essays/">Read →</a>', { fontFamily: 'mono', fontSize: 'small' })],
@@ -114,6 +129,7 @@ export const PATTERNS: SetPattern[] = [
   },
   {
     key: 'plate',
+    role: 'gallery',
     title: 'Paper photo plate',
     description: 'One documentary photograph printed across the wide measure like a plate in a book, with a numbered figure caption in mono.',
     tags: ['image', 'photo', 'editorial'],
@@ -125,6 +141,7 @@ export const PATTERNS: SetPattern[] = [
   },
   {
     key: 'essay',
+    role: 'article',
     title: 'Paper essay',
     description: 'A complete essay opening on the reading measure: kicker, headline, deck, byline, a drop-cap lede, body text with a margin sidenote, a subhead, a pull quote and an asterism to close.',
     tags: ['article', 'longform', 'blog'],
@@ -133,36 +150,38 @@ export const PATTERNS: SetPattern[] = [
         label('Essay — No. 142', { textColor: 'accent' }),
         h('On slow software', 1),
         deck('The programs we keep for decades are quiet, a little stubborn and never in a hurry. What they know that the rest of our tools forgot.'),
-        pe('byline'),
+        byline(),
         plate('desk', 'A writer’s desk at night: an open notebook, a fountain pen, a lamp and an old computer', 'Fig. 1 — Where the letter is written, Wednesday nights.', { align: 'wide' }),
-        pe('lede'),
+        lede('Every program I love', 'does one thing, slowly and well. It opens without a spinner, forgets nothing I told it, and has never once asked me to rate my experience.'),
         p('I have been thinking about why. The calendar I use was written in 1998 by one person in Graz.<sup>1</sup> It has had four updates since I installed it. None of them moved a button.'),
-        pe('note', { number: '1', text: 'He still answers email, usually within a week, always in full sentences.' }),
+        note('1', 'He still answers email, usually within a week, always in full sentences.'),
         p('Most of what lives on my phone is the opposite. It is fast in the way a waiter is fast when he wants the table back: attentive, eager, and gone the moment you need him.'),
         h('Patience is a feature', 2, { fontSize: 'xx-large' }),
         p('Slow software is not slow to use. It is slow to change. It treats the habits you built around it as something worth protecting, and it assumes you will still be here next year.'),
-        pe('pullquote', { quote: 'Software should be a place you visit, not a place that visits you.', look: 'rule' }),
+        pullquote('Software should be a place you visit, not a place that visits you.', 'rule'),
         plate('timer', 'An old mechanical kitchen timer on a marble counter beside half a lemon', 'Fig. 3 — Forty years, one dial, no updates.', { align: 'center', width: '320px' }),
         p('That is the whole argument, really. The rest of this letter is examples — seven of them, from a text editor to a kitchen timer — and one confession about a to-do app I abandoned three times.<sup>2</sup>'),
-        pe('note', { number: '2', text: 'It is now on its eleventh redesign. I wish it well, from a distance.' }),
+        note('2', 'It is now on its eleventh redesign. I wish it well, from a distance.'),
         p('If there is a lesson, it is an old one from the print shop: make the thing well, then leave it alone long enough for people to love it.'),
-        pe('ornament', { kind: 'asterism' }),
+        ornament('asterism'),
       ], { top: 80, bottom: 80, gap: 40 }),
     ],
   },
   {
     key: 'pull-spread',
+    role: 'showcase',
     title: 'Paper pull-quote spread',
     description: 'One sentence given a whole oxblood spread: a centred italic pull quote under a fleuron, with its source in mono.',
     tags: ['quote', 'statement', 'editorial'],
     sections: [
       section('Pull quote', 'oxblood', [
-        pe('pullquote', { quote: 'Make the thing well, then leave it alone long enough for people to love it.', cite: 'From “On slow software”', look: 'centred' }),
+        pullquote('Make the thing well, then leave it alone long enough for people to love it.', 'centred', 'From “On slow software”'),
       ], { top: 80, bottom: 80 }),
     ],
   },
   {
     key: 'archive',
+    role: 'list',
     title: 'Paper archive',
     description: 'The archive: a heading and a short note in a narrow column beside a numbered list of past letters with kickers, dot leaders and dates.',
     tags: ['archive', 'blog', 'index'],
@@ -171,7 +190,7 @@ export const PATTERNS: SetPattern[] = [
         cols(['30%', '70%'], [
           [label('The archive', { textColor: 'accent' }), h('Every letter, newest first', 2, { fontSize: 'xx-large' }), p('One hundred and forty-two Thursdays so far. The early ones are shorter and more certain.', { fontSize: 'small' })],
           [
-            b('core/group', { layout: { type: 'default' }, style: { spacing: { blockGap: '0' } } }, [
+            rows([
               row('142', 'Essay', 'On slow software', '15 Oct 2026', '/on-slow-software/'),
               row('141', 'Notebook', 'Seven tools I have used for ten years', '8 Oct 2026'),
               row('140', 'Workshop', 'The case for a boring settings page', '1 Oct 2026'),
@@ -187,6 +206,7 @@ export const PATTERNS: SetPattern[] = [
   },
   {
     key: 'letters',
+    role: 'testimonial',
     title: 'Paper letters',
     description: 'Letters to the editor: three short reader letters in columns, each in italic with the writer’s name and town in mono, on a tinted band.',
     tags: ['testimonials', 'quotes', 'community'],
@@ -206,6 +226,7 @@ export const PATTERNS: SetPattern[] = [
   },
   {
     key: 'subscribe',
+    role: 'cta',
     title: 'Paper subscribe',
     description: 'A subscription card on ink: an engraved moon, a headline, one paragraph, a button to the newsletter page and fine print in mono. No form — it links where the list lives.',
     tags: ['newsletter', 'cta', 'subscribe'],
@@ -221,6 +242,7 @@ export const PATTERNS: SetPattern[] = [
   },
   {
     key: 'about',
+    role: 'story',
     title: 'Paper about the editor',
     description: 'About the editor: a black-and-white portrait beside a mono label, a heading, three paragraphs and a handwritten-feeling italic signature.',
     tags: ['about', 'bio', 'editorial'],
@@ -241,7 +263,27 @@ export const PATTERNS: SetPattern[] = [
     ],
   },
   {
+    key: 'questions',
+    role: 'faq',
+    title: 'Paper questions',
+    description: 'Questions before subscribing on the reading measure: a heading, each question as a small heading with its answer, an asterism to close.',
+    tags: ['faq', 'questions', 'editorial'],
+    sections: [
+      section('Questions', 'paper', [
+        h('Before you subscribe', 2, { fontSize: 'xx-large' }),
+        h('What arrives, and when?', 3, { fontSize: 'large' }),
+        p('One letter every Thursday at seven in the morning, Central European Time: an essay, a few notes and the best replies. Nothing else, ever.'),
+        h('Does it cost anything?', 3, { fontSize: 'large' }),
+        p('No. Readers who want to support it can buy the yearly printed edition, which is the same letters on good paper.'),
+        h('What do you do with my address?', 3, { fontSize: 'large' }),
+        p('Send you the letter. There are no tracking pixels, no link redirects and no third parties. Reply to any letter and Ana reads it.'),
+        ornament('asterism'),
+      ], { top: 70, bottom: 80, gap: 40 }),
+    ],
+  },
+  {
     key: 'page-title',
+    role: 'page-title',
     title: 'Paper page title',
     description: 'A page opener on the reading measure: mono kicker in the accent colour, a headline, an italic deck and a double rule.',
     tags: ['title', 'header', 'editorial'],
@@ -250,7 +292,7 @@ export const PATTERNS: SetPattern[] = [
         label('The archive', { textColor: 'accent' }),
         h('Essays', 1),
         deck('Every Thursday since 2023: essays on design, slow software and the craft of making things, newest first.'),
-        pe('ornament', { kind: 'double' }),
+        ornament('double'),
       ], { top: 80, bottom: 30, gap: 40 }),
     ],
   },
@@ -275,7 +317,7 @@ export const HEADER: BlockNode[] = [
             b('core/navigation-link', { label: 'Essays', url: '/essays/', kind: 'custom' }),
             b('core/navigation-link', { label: 'About', url: '/about/', kind: 'custom' }),
           ]),
-          b('core/buttons', { className: 'pe-header-cta' }, [b('core/button', { text: 'Subscribe', url: '/subscribe/' })]),
+          b('core/buttons', { className: is('paper-desktop-only') }, [b('core/button', { text: 'Subscribe', url: '/subscribe/' })]),
         ]),
       ]),
     ],
@@ -294,7 +336,7 @@ export const FOOTER: BlockNode[] = [
       layout: { type: 'constrained' },
     },
     [
-      pe('ornament', { kind: 'fleuron', align: 'wide' }),
+      ornament('fleuron', { align: 'wide' }),
       cols(['44%', '22%', '34%'], [
         [
           b('core/site-title', { level: 0, fontFamily: 'heading', fontSize: 'xx-large', style: { typography: { fontWeight: '500', letterSpacing: '-0.025em' } } }),

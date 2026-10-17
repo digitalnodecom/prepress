@@ -93,4 +93,6 @@ for (const item of built.items) {
   const m = await post(`/items/${id}/moderate`, { admin, action: 'official' });
   if (m.status !== 200) throw new Error(`official ${item.key}: ${m.status} ${m.data.error ?? ''}`);
 }
+const stale = Object.keys(state).filter((k) => !built.items.some((i) => i.key === k));
+if (stale.length) console.log(`\nNo longer in the set (still published; unlist or delete them by hand if wanted): ${stale.map((k) => `${k} → ${state[k]}`).join(', ')}`);
 console.log(`\n${built.items.length} items.${state.template ? ` Template: ${api}/library/${state.template}` : ` Blocks: ${api}/library?type=block&q=${setName}`}`);

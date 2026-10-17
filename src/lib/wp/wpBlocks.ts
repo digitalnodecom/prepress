@@ -270,11 +270,13 @@ export const RUNTIME = String.raw`
   }
 `;
 
-/** functions.php additions: register the site blocks (if any) and the pattern category (if any patterns). */
-export function functionsPhpBlocks(defs: CustomBlockDef[], hasPatterns: boolean, fn: string, slug: string): string {
-  let out = '';
-  if (defs.length) {
-    out += `
+/**
+ * PHP that registers the site blocks. `base` is a PHP expression for the folder URL
+ * holding assets/ (theme: get_theme_file_uri(); plugin: plugin_dir_url( __FILE__ )),
+ * `version` one for the script version.
+ */
+export function registerBlocksPhp(defs: CustomBlockDef[], fn: string, base: string, version: string): string {
+  return `
 /**
  * Site blocks made in Prepress (blocks/*). Front end: render.php; editor: assets/prepress-blocks.js.
  */
@@ -283,9 +285,9 @@ require_once __DIR__ . '/inc/prepress-blocks.php';
 function ${fn}_register_blocks() {
 	wp_register_script(
 		'prepress-blocks-editor',
-		get_theme_file_uri( 'assets/prepress-blocks.js' ),
+		${base} . 'assets/prepress-blocks.js',
 		array( 'wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-i18n' ),
-		wp_get_theme()->get( 'Version' ),
+		${version},
 		true
 	);
 	foreach ( array( ${defs.map((d) => php(blockSlug(d.name))).join(', ')} ) as $block ) {
@@ -293,6 +295,17 @@ function ${fn}_register_blocks() {
 	}
 }
 add_action( 'init', '${fn}_register_blocks' );
+`;
+}
+
+/** functions.php additions: site blocks (theme mode), block styles and the pattern category. */
+export function functionsPhpBlocks(defs: CustomBlockDef[], hasPatterns: boolean, fn: string, slug: string, opts: { blockStyles?: boolean } = {}): string {
+  let out = '';
+  if (defs.length) out += registerBlocksPhp(defs, fn, "get_theme_file_uri( '/' )", "wp_get_theme()->get( 'Version' )");
+  if (opts.blockStyles) {
+    out += `
+/** Block styles made in Prepress (a block's Styles panel). */
+require_once __DIR__ . '/inc/block-styles.php';
 `;
   }
   if (hasPatterns) {
@@ -307,12 +320,47 @@ add_action( 'init', '${fn}_pattern_category' );
   return out;
 }
 
-/** patterns/<slug>.php for an unsynced pattern. */
-export function patternPhp(p: { slug: string; title: string; description?: string; content: string; categories?: string[] }, themeSlug: string): string {
+/** Main file of the companion plugin that carries the site blocks (export with blocks: 'plugin'). */
+export function pluginPhp(defs: CustomBlockDef[], o: { name: string; slug: string; fn: string; version: string; wp: string }): string {
+  return `<?php
+/**
+ * Plugin Name:       ${comment(o.name)} Blocks
+ * Description:       Blocks made in Prepress for ${comment(o.name)}. They keep working whichever theme is active.
+ * Version:           1.0.0
+ * Requires at least: ${o.wp}
+ * Requires PHP:      7.4
+ * License:           GPL-2.0-or-later
+ * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
+ * Text Domain:       ${o.slug}
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+${registerBlocksPhp(defs, o.fn, 'plugin_dir_url( __FILE__ )', php(o.version))}`;
+}
+
+/** Pattern roles → WordPress's core pattern categories. */
+export const ROLE_CATEGORIES: Record<string, string> = {
+  hero: 'banner', 'page-title': 'banner', article: 'text', intro: 'text', story: 'about', features: 'services', showcase: 'featured',
+  gallery: 'gallery', list: 'text', menu: 'text', pricing: 'call-to-action', stats: 'about', testimonial: 'testimonials',
+  faq: 'text', cta: 'call-to-action', contact: 'contact', header: 'header', footer: 'footer',
+};
+
+/** patterns/<slug>.php for an unsynced pattern (also header/footer, with `blockTypes`). */
+export function patternPhp(
+  p: { slug: string; title: string; description?: string; content: string; categories?: string[]; role?: string; keywords?: string[]; blockTypes?: string[] },
+  themeSlug: string,
+): string {
+  const word = (c: string) => comment(c).replace(/[^\w -]/g, '').trim();
+  const cats = [...new Set([themeSlug, ...(p.role && ROLE_CATEGORIES[p.role] ? [ROLE_CATEGORIES[p.role]] : []), ...(p.categories ?? []).map(word)].filter(Boolean))];
   const header = [
     `Title: ${comment(p.title)}`,
     `Slug: ${themeSlug}/${p.slug}`,
-    `Categories: ${[themeSlug, ...(p.categories ?? []).map((c) => comment(c).replace(/[^\w -]/g, ''))].join(', ')}`,
+    `Categories: ${cats.join(', ')}`,
+    ...(p.keywords?.length ? [`Keywords: ${p.keywords.map(word).filter(Boolean).join(', ')}`] : []),
+    ...(p.blockTypes?.length ? [`Block Types: ${p.blockTypes.join(', ')}`] : []),
+    'Viewport Width: 1400',
     ...(p.description ? [`Description: ${comment(p.description)}`] : []),
   ];
   return `<?php\n/**\n${header.map((l) => ` * ${l}`).join('\n')}\n */\n?>\n${p.content.replace(/<\?/g, '&lt;?')}\n`;

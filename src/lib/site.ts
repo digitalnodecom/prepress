@@ -3,8 +3,9 @@
  * the stored markup is always valid Gutenberg content.
  */
 import { createBlock, parse, serialize } from '@wordpress/blocks';
-import type { BlockNode, CustomBlockDef, Design, Page, PartSlug, PatternDef, Site, SitePlan } from './types';
+import type { BlockNode, BlockStyleDef, CustomBlockDef, Design, Page, PartSlug, PatternDef, Site, SitePlan } from './types';
 import { cleanBlockDef } from './wp/customBlocks';
+import { blockStylesUsedIn, cleanBlockStyle, upsertBlockStyles } from './wp/blockStyles';
 import { cleanThemeJsonPatch, contrastRatio, mergeThemeJson, radiusValue, sanitizeDesign, textOn } from './wp/design';
 import { markupToNodes, splitSections, joinSections, toMarkup } from './wp/markup';
 import { normalizeBlocks, normalizeSections, PART_BLOCKS, type NormalizeReport } from './wp/normalize';
@@ -323,6 +324,30 @@ export function deleteBlock(site: Site, name: string, removeUses = false): Site 
     footer: strip(site.footer),
     patterns: (site.patterns ?? []).map((p) => ({ ...p, content: strip(p.content) })),
   };
+}
+
+// ---------- block styles ----------
+
+/** Add or replace a block style (input is cleaned/validated). */
+export function defineBlockStyle(site: Site, input: unknown): { site: Site; style: BlockStyleDef } {
+  const style = cleanBlockStyle(input);
+  return { site: { ...site, blockStyles: upsertBlockStyles(site.blockStyles, [style]) }, style };
+}
+
+/** Where a block style is used: page ids, part slugs, pattern ids. */
+export function blockStyleUsage(site: Site, name: string): string[] {
+  const used = (m: string) => blockStylesUsedIn(m, [{ name, label: name, blockTypes: [] }]).length > 0;
+  const where: string[] = [];
+  for (const p of site.pages) if (used(p.content)) where.push(`page:${p.slug}`);
+  for (const part of ['header', 'footer'] as const) if (used(site[part])) where.push(`part:${part}`);
+  for (const pt of site.patterns ?? []) if (used(pt.content)) where.push(`pattern:${pt.slug}`);
+  return where;
+}
+
+/** Remove a block style. Blocks that use it keep the class and fall back to their plain look. */
+export function deleteBlockStyle(site: Site, name: string): Site {
+  const blockStyles = (site.blockStyles ?? []).filter((d) => d.name !== name);
+  return { ...site, blockStyles };
 }
 
 // ---------- patterns ----------

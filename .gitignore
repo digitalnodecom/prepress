@@ -5,3 +5,5 @@ dist
 prepress-data/
 bin/
 .DS_Store
+.claude/settings.local.json
+.taste-skill/

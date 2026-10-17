@@ -6,6 +6,7 @@
  * padding: "var:preset|spacing|70"), so a restyle is a single theme.json edit,
  * in this builder and later in the WordPress Site Editor.
  */
+import { blockSelector, wpBlockCss } from './css';
 import type { Design, PaletteSlug, ThemeJsonPatch } from '../types';
 import { PALETTE_SLUGS } from '../types';
 
@@ -133,6 +134,21 @@ export function radiusValue(r: Design['radius']): { button: string; card: string
   if (r === 'round') return { button: '999px', card: '24px' };
   return { button: '8px', card: '12px' };
 }
+
+/**
+ * The radius scale every style and block CSS uses (theme.json settings.custom →
+ * `var(--wp--custom--radius--sm|md|lg|pill)`), so the Design's radius reaches it.
+ */
+export function radiusScale(r: Design['radius']): { sm: string; md: string; lg: string; pill: string } {
+  if (r === 'none') return { sm: '0px', md: '0px', lg: '0px', pill: '0px' };
+  if (r === 'round') return { sm: '8px', md: '16px', lg: '24px', pill: '999px' };
+  return { sm: '4px', md: '8px', lg: '12px', pill: '999px' };
+}
+
+export const SHADOWS = [
+  { slug: 'soft', name: 'Soft', shadow: '0 1px 2px rgb(0 0 0 / .06), 0 6px 20px rgb(0 0 0 / .08)' },
+  { slug: 'lifted', name: 'Lifted', shadow: '0 2px 4px rgb(0 0 0 / .08), 0 18px 48px rgb(0 0 0 / .18)' },
+];
 
 const monoKey = (d: Design) => (d.monoFont && FONTS[d.monoFont]?.mono ? d.monoFont : 'system-mono');
 
@@ -268,6 +284,9 @@ function baseThemeJson(design: Design) {
         spacingSizes: SPACING_SIZES,
         units: ['px', 'em', 'rem', 'vh', 'vw', '%'],
       },
+      shadow: { defaultPresets: false, presets: SHADOWS },
+      // var(--wp--custom--radius--md) etc.: follows the Design's corner setting.
+      custom: { radius: radiusScale(design.radius), border: { width: '1px' } },
     },
     styles: {
       color: { background: 'var:preset|color|base', text: 'var:preset|color|contrast' },
@@ -339,33 +358,51 @@ function fluid(min: string, max: string) {
   return `clamp(${min}, calc(${a}rem + ${(b - a).toFixed(4)} * ((100vw - 20rem) / 55)), ${max})`;
 }
 
-function decls(obj: Record<string, unknown> | undefined): string {
+/** CSS declarations for a theme.json style object (root level; elements/blocks are handled by the caller). */
+export function decls(obj: Record<string, unknown> | undefined): string {
   if (!obj) return '';
   const out: string[] = [];
   const t = obj.typography as Record<string, string> | undefined;
   const c = obj.color as Record<string, string> | undefined;
   const s = obj.spacing as Record<string, any> | undefined;
   const b = obj.border as Record<string, any> | undefined;
+  const d = obj.dimensions as Record<string, string> | undefined;
   if (c?.background) out.push(`background-color:${presetToCss(c.background)}`);
+  if (c?.gradient) out.push(`background:${presetToCss(c.gradient)}`);
   if (c?.text) out.push(`color:${presetToCss(c.text)}`);
   if (t) {
     const map: Record<string, string> = {
-      fontFamily: 'font-family', fontSize: 'font-size', fontWeight: 'font-weight', lineHeight: 'line-height',
-      letterSpacing: 'letter-spacing', textDecoration: 'text-decoration', textTransform: 'text-transform',
+      fontFamily: 'font-family', fontSize: 'font-size', fontWeight: 'font-weight', fontStyle: 'font-style', lineHeight: 'line-height',
+      letterSpacing: 'letter-spacing', textDecoration: 'text-decoration', textTransform: 'text-transform', textAlign: 'text-align',
     };
     for (const [k, v] of Object.entries(t)) if (map[k]) out.push(`${map[k]}:${presetToCss(v)}`);
   }
-  if (s?.padding) {
-    for (const side of ['top', 'right', 'bottom', 'left']) if (s.padding[side]) out.push(`padding-${side}:${presetToCss(s.padding[side])}`);
+  for (const box of ['padding', 'margin'] as const) {
+    const v = s?.[box];
+    if (typeof v === 'string') out.push(`${box}:${presetToCss(v)}`);
+    else if (v) for (const side of ['top', 'right', 'bottom', 'left']) if (v[side]) out.push(`${box}-${side}:${presetToCss(v[side])}`);
   }
   if (b) {
-    if (b.radius) out.push(`border-radius:${b.radius}`);
+    if (b.radius) out.push(`border-radius:${typeof b.radius === 'string' ? presetToCss(b.radius) : ['topLeft', 'topRight', 'bottomRight', 'bottomLeft'].map((k) => presetToCss(b.radius[k] ?? '0')).join(' ')}`);
     if (b.width) out.push(`border-width:${b.width}`);
     if (b.style) out.push(`border-style:${b.style}`);
     if (b.color) out.push(`border-color:${presetToCss(b.color)}`);
-    if (b.bottom) out.push(`border-bottom:${b.bottom.width} ${b.bottom.style} ${presetToCss(b.bottom.color)}`);
+    for (const side of ['top', 'right', 'bottom', 'left']) {
+      const x = b[side];
+      if (x) out.push(`border-${side}:${x.width ?? '1px'} ${x.style ?? 'solid'} ${presetToCss(x.color ?? 'currentColor')}`);
+    }
   }
+  if (typeof obj.shadow === 'string') out.push(`box-shadow:${presetToCss(obj.shadow)}`);
+  if (d?.minHeight) out.push(`min-height:${presetToCss(d.minHeight)}`);
+  if (d?.aspectRatio) out.push(`aspect-ratio:${d.aspectRatio}`);
   return out.join(';');
+}
+
+/** settings.custom → `--wp--custom--a--b-c` (camelCase becomes kebab, nesting joins with --). */
+export function customVars(custom: unknown, prefix = '--wp--custom'): string[] {
+  if (!isObj(custom)) return [];
+  const kebab = (k: string) => k.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+  return Object.entries(custom).flatMap(([k, v]) => (isObj(v) ? customVars(v, `${prefix}--${kebab(k)}`) : v === null || v === undefined ? [] : [`${prefix}--${kebab(k)}:${v}`]));
 }
 
 /** Generates the global-styles CSS for the preview from the same theme.json we export. */
@@ -404,6 +441,11 @@ export function compileGlobalStyles(design: Design, patch?: ThemeJsonPatch): str
     classes.push(`.has-${ff.slug}-font-family{font-family:var(--wp--preset--font-family--${ff.slug}) !important}`);
   }
   for (const sp of spacingSizes) vars.push(`--wp--preset--spacing--${sp.slug}:${sp.size}`);
+  for (const sh of (tj.settings.shadow?.presets ?? []) as any[]) {
+    vars.push(`--wp--preset--shadow--${sh.slug}:${sh.shadow}`);
+    classes.push(`.has-${sh.slug}-shadow{box-shadow:var(--wp--preset--shadow--${sh.slug}) !important}`);
+  }
+  vars.push(...customVars(tj.settings.custom));
 
   const st = tj.styles;
   vars.push(
@@ -454,9 +496,13 @@ export function compileGlobalStyles(design: Design, patch?: ThemeJsonPatch): str
     `.wp-block-button.is-style-outline > .wp-block-button__link:not(.has-background){background:transparent;border:2px solid currentColor;padding:calc(0.8rem - 2px) calc(1.5rem - 2px)}`,
     `.wp-block-button.is-style-outline > .wp-block-button__link:not(.has-text-color){color:var(--wp--preset--color--contrast)}`,
     ...Object.entries(blocks).map(([name, s]) => {
-      const cls = `.wp-block-${name.replace('core/', '')}`;
-      const linkRule = s.elements?.link ? `${cls} a{${decls(s.elements.link)}}` : '';
-      return `${cls}{${decls(s)}}${linkRule}`;
+      if (!isObj(s)) return '';
+      // Like WordPress 6.6+: block styles from theme.json have zero specificity (`:root :where(…)`),
+      // so WordPress's own block CSS wins where it sets the same property.
+      const sel = blockSelector(name);
+      const d = decls(s);
+      const linkRule = s.elements?.link ? `:root :where(${sel.split(',').map((x) => `${x.trim()} a:where(:not(.wp-element-button))`).join(', ')}){${decls(s.elements.link)}}` : '';
+      return `${d ? `:root :where(${sel}){${d}}` : ''}${linkRule}${wpBlockCss(s.css, sel)}`;
     }),
     `.wp-block-navigation a{text-decoration:none}`,
     `.wp-block-navigation a:hover{text-decoration:underline}`,

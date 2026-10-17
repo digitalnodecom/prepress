@@ -36,7 +36,8 @@ import { installDynamicBlockEdits, linkSuggestions, type PrepressEditorInfo } fr
 import { installCustomBlockEdit } from './customBlockEdit';
 import { AREA_BLOCK, areaBlocks, registerAreaBlock, splitAreas, type AreaMarkup } from './templateAreas';
 import { sanitizeCss } from '../../lib/wp/customBlocks';
-import type { CustomBlockDef, PatternDef, ThemeJsonPatch } from '../../lib/types';
+import { compileBlockStyles, registerBlockStyles } from '../../lib/wp/blockStyles';
+import type { BlockStyleDef, CustomBlockDef, PatternDef, ThemeJsonPatch } from '../../lib/types';
 
 ensureBlocks();
 installDynamicBlockEdits();
@@ -54,7 +55,7 @@ function features(design: Design, patch?: ThemeJsonPatch) {
     border: { color: true, radius: true, style: true, width: true },
     dimensions: { aspectRatio: true, minHeight: true },
     position: { sticky: true },
-    shadow: { defaultPresets: true },
+    shadow: { defaultPresets: false, presets: { theme: s.shadow?.presets ?? [] } },
     background: { backgroundImage: true, backgroundSize: true },
     color: {
       ...s.color,
@@ -98,6 +99,8 @@ export interface EditorProps {
   blocks: CustomBlockDef[];
   /** Site patterns for the inserter. */
   patterns: PatternDef[];
+  /** Site block styles: offered in each block's Styles panel and styled in the canvas. */
+  blockStyles?: BlockStyleDef[];
   themeJson?: ThemeJsonPatch;
   /** `record` = persistent change worth an undo step. */
   onChange(markup: string, record: boolean): void;
@@ -110,7 +113,8 @@ export interface EditorProps {
 }
 
 /** Provider + store. Children render the canvas and sidebars (they need the context). */
-export function EditorProvider({ content, design, canUpload, info, blocks: customBlocks, patterns, themeJson, onChange, template, children }: EditorProps) {
+export function EditorProvider({ content, design, canUpload, info, blocks: customBlocks, patterns, blockStyles, themeJson, onChange, template, children }: EditorProps) {
+  useMemo(() => registerBlockStyles(blockStyles), [blockStyles]);
   const header = template?.header ?? '';
   const footer = template?.footer ?? '';
   /** Build the editor value; remembers what each area serializes to, so unchanged areas are never written back. */
@@ -182,11 +186,11 @@ export function EditorProvider({ content, design, canUpload, info, blocks: custo
   // A new assets object makes the canvas iframe reload its document (losing focus and keystrokes): keep it stable.
   const resolvedAssets = useMemo(() => {
     const fonts = googleFontsUrl(design);
-    const styles = [componentsStyle, blockEditorContent, blockLibraryStyle, blockLibraryEditor, blockLibraryTheme, compileGlobalStyles(design, themeJson), customBlocks.map((b) => sanitizeCss(b.css)).join('\n'), EDITOR_CANVAS_CSS]
+    const styles = [componentsStyle, blockEditorContent, blockLibraryStyle, blockLibraryEditor, blockLibraryTheme, compileGlobalStyles(design, themeJson), compileBlockStyles(blockStyles), customBlocks.map((b) => sanitizeCss(b.css)).join('\n'), EDITOR_CANVAS_CSS]
       .map((css) => `<style>${css}</style>`)
       .join('');
     return { styles: (fonts ? `<link rel="stylesheet" href="${fonts}">` : '') + styles, scripts: '' };
-  }, [design, themeJson, customBlocks]);
+  }, [design, themeJson, customBlocks, blockStyles]);
 
   const settings = useMemo(() => {
     const s = features(design, themeJson);

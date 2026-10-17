@@ -181,6 +181,7 @@ export function cleanBlockDef(input: any): CustomBlockDef {
   if (input.description) def.description = String(input.description).slice(0, 300);
   if (input.icon) def.icon = String(input.icon).replace(/[^a-z0-9-]/g, '').slice(0, 40);
   if (input.css) def.css = sanitizeCss(input.css);
+  if (['art', 'interactive', 'effect'].includes(input.kind)) def.kind = input.kind;
   if (hasContentSlot(def) && input.innerBlocks && typeof input.innerBlocks === 'object') {
     def.innerBlocks = {};
     if (Array.isArray(input.innerBlocks.allowed)) def.innerBlocks.allowed = input.innerBlocks.allowed.map(String);

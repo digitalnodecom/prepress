@@ -18,6 +18,7 @@ import { compileGlobalStyles, googleFontsUrl, presetToCss } from './design';
 import { ensureBlocks } from './registry';
 import { templates, HOME_SLUG } from './templates';
 import { fillTemplate, isCustomBlock, sanitizeCss } from './customBlocks';
+import { compileBlockStyles } from './blockStyles';
 
 interface RawBlock {
   blockName: string | null;
@@ -301,9 +302,30 @@ function renderPatternRef(block: RawBlock, ctx: Ctx): string {
 function renderBlock(block: RawBlock, ctx: Ctx): string {
   if (!block.blockName) return block.innerHTML;
   const dyn = renderDynamic(block, ctx);
-  if (dyn !== null) return dyn;
+  if (dyn !== null) return childLayout(block, dyn, ctx);
   const { html, first } = renderChildren(block, ctx);
-  return applyLayout(block, html, first, ctx);
+  return childLayout(block, applyLayout(block, html, first, ctx), ctx);
+}
+
+/**
+ * Child layout (`style.layout` on a block inside a flex/grid parent): column/row
+ * span and start, fill/fixed width — like WordPress's `wp-container-content-*`.
+ */
+function childLayout(block: RawBlock, html: string, ctx: Ctx): string {
+  const l = block.attrs?.style?.layout;
+  if (!l || typeof l !== 'object') return html;
+  const d: string[] = [];
+  if (l.selfStretch === 'fill') d.push('flex-grow:1');
+  else if (l.selfStretch === 'fixed' && l.flexSize) d.push(`flex-basis:${l.flexSize}`, 'box-sizing:border-box');
+  const track = (start: unknown, span: unknown) => (start && span ? `${Number(start)} / span ${Number(span)}` : span ? `span ${Number(span)}` : start ? `${Number(start)}` : '');
+  const col = track(l.columnStart, l.columnSpan);
+  const row = track(l.rowStart, l.rowSpan);
+  if (col) d.push(`grid-column:${col}`);
+  if (row) d.push(`grid-row:${row}`);
+  if (!d.length) return html;
+  const id = `wp-container-content-${++ctx.n}`;
+  ctx.css.push(`.${id}{${d.join(';')}}`);
+  return patchFirst(html, { classes: [id] });
 }
 
 // ---------- document ----------
@@ -362,6 +384,7 @@ export function renderPage(site: Site, page: Page, opts: RenderOptions = {}): st
 ${fonts ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="${fonts}">` : ''}
 <style id="wp-block-library">${blockLibraryCss}</style>
 <style id="global-styles">${compileGlobalStyles(site.design, site.themeJson)}</style>
+<style id="block-styles">${compileBlockStyles(site.blockStyles)}</style>
 <style id="core-block-supports">${ctx.css.join('\n')}</style>
 <style>${PREVIEW_CSS}</style>
 </head><body class="wp-site-blocks-body"><div class="wp-site-blocks">${body}</div>${opts.interactive ? `<script>${PREVIEW_SCRIPT}</script>` : ''}</body></html>`;

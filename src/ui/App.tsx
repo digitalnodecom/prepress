@@ -6,7 +6,7 @@ import { friendlyError } from '../lib/ai/client';
 import { generateSite } from '../lib/ai/generate';
 import { DEMO_BRIEF } from '../lib/ai/demo';
 import {
-  addPage, applyDesign, rebuildParts, removePage, resetPart, setPageContent, setPart, updatePage, updatePattern, deletePattern, deleteBlock,
+  addPage, applyDesign, rebuildParts, removePage, resetPart, setPageContent, setPart, updatePage, updatePattern, deletePattern, deleteBlock, deleteBlockStyle,
 } from '../lib/site';
 import { validateMarkup } from '../lib/wp/markup';
 import { pageUrl, renderPage } from '../lib/wp/render';
@@ -15,6 +15,7 @@ import { connectBackend, libraryGet, loadDraft, publish, saveDraft, siteHash, su
 import { registerCustomBlocks } from '../lib/wp/customBlocks';
 import { Preview, type Device } from './Preview';
 import { DesignPanel } from './DesignPanel';
+import { ThemeCssPanel } from './ThemeCssPanel';
 import { SitePanel } from './SitePanel';
 import { PagePanel } from './PagePanel';
 import { PartPanel } from './PartPanel';
@@ -380,11 +381,19 @@ export function App() {
     }
   };
 
-  const onExport = async () => {
+  /** With custom blocks, ask where they go first (theme or companion plugin). */
+  const [exportAsk, setExportAsk] = useState(false);
+  const onExport = () => {
     if (!site) return;
+    if ((site.blocks ?? []).length) setExportAsk(true);
+    else void runExport('theme');
+  };
+  const runExport = async (blocks: 'theme' | 'plugin') => {
+    if (!site) return;
+    setExportAsk(false);
     setBusy('Packaging export');
     try {
-      const res = await exportSite(site);
+      const res = await exportSite(site, { blocks });
       const downloads = window.claude ? await window.claude.use('downloads').catch(() => null) : null;
       if (downloads) {
         try {
@@ -523,6 +532,7 @@ export function App() {
       content={editingPattern ? editingPattern.content : part ? site[part] : page.content}
       blocks={site.blocks ?? NONE}
       patterns={site.patterns ?? NONE}
+      blockStyles={site.blockStyles ?? NONE}
       themeJson={site.themeJson}
       design={site.design}
       canUpload={backend?.kind === 'server'}
@@ -698,7 +708,12 @@ export function App() {
                 )}
                 {tab === 'page' && !part && <PagePanel page={page} siteUrl={siteBase} onUpdate={(patch) => setSite((s) => updatePage(s, page.id, patch))} />}
                 {tab === 'block' && <Inspector />}
-                {tab === 'styles' && <DesignPanel design={site.design} onChange={onDesign} />}
+                {tab === 'styles' && (
+                  <>
+                    <DesignPanel design={site.design} onChange={onDesign} />
+                    <ThemeCssPanel site={site} onDeleteStyle={(name) => setSite((s) => deleteBlockStyle(s, name))} />
+                  </>
+                )}
                 {tab === 'site' && (
                   <SitePanel
                     site={site}
@@ -752,6 +767,19 @@ export function App() {
               }
             }}
           />
+        )}
+        {exportAsk && (
+          <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && setExportAsk(false)}>
+            <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="export-title">
+              <h2 id="export-title">Export for WordPress</h2>
+              <p>This site has {(site.blocks ?? []).length} custom block{(site.blocks ?? []).length === 1 ? '' : 's'}. Where should they go?</p>
+              <div className="row end" style={{ flexWrap: 'wrap' }}>
+                <button className="btn" onClick={() => runExport('theme')} title="One zip; the blocks stop working if you switch themes">Inside the theme</button>
+                <button className="btn primary" onClick={() => runExport('plugin')} title="Survives a theme switch; needed for the WordPress.org theme directory">As a separate plugin</button>
+              </div>
+              <p className="hint">A plugin keeps the blocks working if you change themes later, and is what the WordPress.org theme directory requires.</p>
+            </div>
+          </div>
         )}
         {publishing && <PublishDialog pages={site.pages.length} siteName={site.name} onPublish={doPublish} onClose={() => setPublishing(false)} />}
         {settings && (

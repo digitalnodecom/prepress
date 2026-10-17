@@ -149,6 +149,23 @@ describe('MCP server', () => {
     expect((await fetch(base + exp.path)).status).toBe(200);
   }, 60000);
 
+  test('block styles, guidelines and the plugin export', async () => {
+    expect((await call('get_guidelines')).guidelines).toContain('Which block?');
+    const r = await call('define_block_style', { name: 'demo-card', label: 'Card', blockTypes: ['core/group'], css: 'padding:1rem;border-radius:var(--wp--custom--radius--md)' });
+    expect(r.useWith).toEqual({ className: 'is-style-demo-card' });
+    await call('insert_section', { page: 'home', index: 0, sections: [{ name: 'core/group', attributes: { className: 'is-style-demo-card', align: 'full', metadata: { name: 'Card' } }, innerBlocks: [{ name: 'core/paragraph', attributes: { content: 'Hi' } }] }] });
+    const catalog = await call('get_block_catalog');
+    expect(catalog.blockStyles.map((d: any) => d.name)).toContain('demo-card');
+    const v = await call('validate_site');
+    expect(v.invalid).toEqual([]);
+    expect(JSON.stringify(v.warnings ?? [])).not.toContain('demo-card');
+    const exp = await call('export_wordpress', { blocks: 'plugin' });
+    const outer = await JSZip.loadAsync(readFileSync(exp.localPath));
+    expect(Object.keys(outer.files).some((f) => f.endsWith('-blocks.zip'))).toBe(true);
+    await call('delete_block_style', { name: 'demo-card' });
+    expect((await call('get_block_catalog')).blockStyles).toEqual([]);
+  }, 60000);
+
   test('publish uploads to the chosen targets (editor dialog and MCP), default = the auto ones', async () => {
     const put = (body: unknown) => fetch(`${base}/api/deploy`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
     const a = join(dir, 'target-a');

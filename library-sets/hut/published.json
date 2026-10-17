@@ -1,10 +1,7 @@
 {
   "style": "c51mcvituu",
-  "block:hut-pass": "9wevntpyzu",
   "block:hut-stamp": "jysmluvyly",
   "block:hut-routes": "uf2qopr7bf",
-  "block:hut-menu-item": "oyhddty2ge",
-  "block:hut-receipt": "hmy9dsjis0",
   "pattern:hero": "uh00vvs328",
   "pattern:walk": "qdttzmjgkd",
   "pattern:lakes": "omqzwymzyc",
@@ -12,5 +9,6 @@
   "pattern:prices": "qzblrp1fv7",
   "pattern:questions": "eirutwqrjg",
   "pattern:visit": "ombiqvkbt1",
-  "template": "izu1cbqih8"
+  "template": "izu1cbqih8",
+  "pattern:hut": "syb85jv05s"
 }

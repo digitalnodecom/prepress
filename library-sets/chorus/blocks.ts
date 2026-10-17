@@ -20,6 +20,7 @@ const C = (slug: string) => `var(--wp--preset--color--${slug})`;
 const MIX = (a: string, pct: number, b = 'transparent') => `color-mix(in srgb, ${a} ${pct}%, ${b})`;
 const FONT = 'var(--wp--preset--font-family--body)';
 const EASE = 'cubic-bezier(.2,.7,.2,1)';
+const R = (size: 'sm' | 'md' | 'lg') => `var(--wp--custom--radius--${size})`;
 const PICS = 'https://prepress.s3.fr-par.scw.cloud/_library/chorus';
 
 // ---------- spectrograms (generated at authoring time: time → x, pitch → y) ----------
@@ -79,7 +80,7 @@ const spectrogram = (song: Song, cls = '') =>
 
 /** Interface CSS shared by every fragment (each block carries it: block CSS loads per block). */
 const UI = `
-[data-ui].ch-ui{--ui-bg:${C('contrast')};--ui-ink:${C('base')};--ui-soft:${MIX(C('base'), 62, C('contrast'))};--ui-line:${MIX(C('base'), 14, C('contrast'))};--ui-hi:${MIX(C('primary'), 70, 'white')};box-sizing:border-box;font-family:${FONT};font-size:.875rem;line-height:1.35;color:var(--ui-ink);background:var(--ui-bg);border-radius:20px;overflow:hidden;text-align:left}
+[data-ui].ch-ui{--ui-bg:${C('contrast')};--ui-ink:${C('base')};--ui-soft:${MIX(C('base'), 62, C('contrast'))};--ui-line:${MIX(C('base'), 14, C('contrast'))};--ui-hi:${MIX(C('primary'), 70, 'white')};box-sizing:border-box;font-family:${FONT};font-size:.875rem;line-height:1.35;color:var(--ui-ink);background:var(--ui-bg);border-radius:${R('lg')};overflow:hidden;text-align:left}
 .ch-ui *{box-sizing:border-box}
 .ch-ui p{margin:0}
 .ch-spec{display:block;width:100%;height:100%}
@@ -87,7 +88,7 @@ const UI = `
 .ch-spec__song path{fill:none;stroke:var(--ui-hi);stroke-width:3.2;stroke-linecap:round;vector-effect:non-scaling-stroke}
 .ch-spec__song .ch-spec__harm{stroke-width:2;opacity:.28}
 .ch-spec__head{stroke:${C('base')};stroke-width:1.5;vector-effect:non-scaling-stroke;opacity:0}
-.ch-plate{display:block;object-fit:cover;border-radius:10px;background:${MIX(C('base'), 85, C('contrast'))}}
+.ch-plate{display:block;object-fit:cover;border-radius:${R('md')};background:${MIX(C('base'), 85, C('contrast'))}}
 .ch-name{font-weight:600;font-size:1rem}
 .ch-latin{font-style:italic;color:var(--ui-soft)}
 .ch-pill{display:inline-flex;align-items:center;gap:.35em;padding:.3em .7em;border-radius:999px;background:var(--ui-line);color:var(--ui-ink);font-size:.8125rem;white-space:nowrap}
@@ -116,6 +117,7 @@ const RECS: [string, Song, string, string, string, string][] = [
 
 export const hero: CustomBlockDef = {
   name: 'prepress/chorus-hero',
+  kind: 'interactive',
   title: 'Chorus hero',
   description: 'A headline split in two around a live frame of the app: pick one of four recordings and its spectrogram draws itself while the singer is named, with a picture and the confidence. Works without scripts.',
   icon: 'format-audio',
@@ -154,7 +156,7 @@ ${RECS.map((r, i) => `<div class="ch-frame__view ch-frame__view--${i + 1}"><div 
 .ch-chip{position:relative;padding:.4em .75em;border-radius:999px;border:1px solid var(--ui-line);color:var(--ui-soft);cursor:pointer;transition:background-color .2s,color .2s} /* taste-skill-ignore: control border inside data-ui */
 .ch-chip:hover{color:var(--ui-ink);border-color:var(--ui-soft)}
 .ch-frame__view{display:none;flex:1;min-height:0;flex-direction:column;gap:.75rem}
-.ch-frame__spec{flex:1;min-height:3rem;border-radius:10px;background:${MIX(C('contrast'), 80, 'black')};padding:.25rem 0}
+.ch-frame__spec{flex:1;min-height:3rem;border-radius:${R('md')};background:${MIX(C('contrast'), 80, 'black')};padding:.25rem 0}
 .ch-match{display:flex;align-items:center;gap:.75rem}
 .ch-match p{flex:1}
 .ch-match .ch-plate{width:3.25rem;height:3.25rem}
@@ -176,6 +178,7 @@ ${RECS.map((_, i) => `.ch-frame:has(.ch-frame__in--${i + 1}:checked) .ch-frame__
 
 export const row: CustomBlockDef = {
   name: 'prepress/chorus-row',
+  kind: 'interactive',
   title: 'Chorus life-list row',
   description: 'One sighting row of the app shown three times — heard, checked (actions showing) and kept — with the state named beside each. The middle row is live: tick it and it becomes kept.',
   icon: 'list-view',
@@ -198,7 +201,7 @@ export const row: CustomBlockDef = {
 .ch-rows__state{grid-column:1;margin:0;text-align:right;font-family:${FONT};font-size:1.625rem;color:${C('accent')}}
 .ch-row{grid-column:2;display:flex;align-items:center;gap:.9rem;padding:.75rem .9rem;min-height:4.5rem}
 .ch-row .ch-plate{width:3.5rem;height:3.5rem;flex:none}
-.ch-row__spec{width:3.5rem;height:3.5rem;flex:none;border-radius:10px;background:${MIX(C('contrast'), 80, 'black')};overflow:hidden}
+.ch-row__spec{width:3.5rem;height:3.5rem;flex:none;border-radius:${R('md')};background:${MIX(C('contrast'), 80, 'black')};overflow:hidden}
 .ch-row__txt{flex:1;min-width:0}
 .ch-row__in{position:absolute;left:0;top:0;width:1px;height:1px;margin:0;opacity:0;pointer-events:none}
 .ch-row__act{position:relative;flex:none;padding:.55em 1em;border-radius:999px;background:${C('primary')};color:${C('base')};cursor:pointer;transition:background-color .2s,transform .15s}
@@ -223,6 +226,7 @@ const STAGE = (i: number, word: string, clause: string) => ({
 
 export const stages: CustomBlockDef = {
   name: 'prepress/chorus-stages',
+  kind: 'interactive',
   title: 'Chorus stages',
   description: 'How it works in four stops: a track with four stops along the bottom drives a large clause on the left and the matching state of the app on the right. Works with mouse, touch and arrow keys; no script.',
   icon: 'controls-forward',
@@ -257,16 +261,16 @@ export const stages: CustomBlockDef = {
 .ch-st{display:none;grid-area:1/1;flex-direction:column;gap:1rem}
 .ch-st__top{display:flex;justify-content:space-between;color:var(--ui-soft)}
 .ch-st__wave{display:flex;align-items:center;gap:3px;height:10rem}
-.ch-st__wave i{flex:1;height:var(--h);border-radius:3px;background:var(--ui-hi);transform-origin:center}
-.ch-st__spec{height:11rem;border-radius:10px;background:${MIX(C('contrast'), 80, 'black')}}
+.ch-st__wave i{flex:1;height:var(--h);border-radius:${R('sm')};background:var(--ui-hi);transform-origin:center}
+.ch-st__spec{height:11rem;border-radius:${R('md')};background:${MIX(C('contrast'), 80, 'black')}}
 .ch-st__plate{width:100%;height:12rem}
 .ch-st--3{gap:.75rem}
 .ch-st__list{list-style:none;margin:0;padding:0}
 .ch-st__list li{display:flex;justify-content:space-between;padding:.8rem 0;border-bottom:1px solid var(--ui-line)} /* taste-skill-ignore: list rule inside data-ui */
 .ch-st__list b{font-weight:500}
 .ch-stages__track{grid-column:1/3;grid-row:2;display:grid;grid-template-columns:repeat(4,1fr);margin:0 1.75rem 1.75rem;padding-top:2.75rem;position:relative}
-.ch-stages__track::before{content:"";position:absolute;left:12.5%;right:12.5%;top:calc(1rem - 2px);height:4px;border-radius:2px;background:${MIX(C('contrast'), 16, 'transparent')}}
-.ch-stages__track::after{content:"";position:absolute;left:12.5%;top:calc(1rem - 2px);height:4px;border-radius:2px;width:var(--done,0%);background:${C('primary')};transition:width .35s ${EASE}}
+.ch-stages__track::before{content:"";position:absolute;left:12.5%;right:12.5%;top:calc(1rem - 2px);height:4px;border-radius:${R('sm')};background:${MIX(C('contrast'), 16, 'transparent')}}
+.ch-stages__track::after{content:"";position:absolute;left:12.5%;top:calc(1rem - 2px);height:4px;border-radius:${R('sm')};width:var(--done,0%);background:${C('primary')};transition:width .35s ${EASE}}
 .ch-stop{position:relative;z-index:1;font-family:${FONT};font-size:1.125rem;color:${C('accent')};cursor:pointer;text-align:center}
 .ch-stop::before{content:"";position:absolute;left:50%;top:-2.75rem;width:2rem;height:2rem;margin-left:-1rem;box-sizing:border-box;border-radius:50%;border:3px solid ${MIX(C('contrast'), 28, C('base'))};background:${C('base')};transition:background-color .2s,border-color .2s,box-shadow .2s,transform .2s ${EASE}} /* taste-skill-ignore: control ring */
 .ch-stop:hover::before{transform:scale(1.1)}
@@ -298,6 +302,7 @@ const CAP = (i: number, title: string, text: string) => ({
 
 export const notes: CustomBlockDef = {
   name: 'prepress/chorus-notes',
+  kind: 'interactive',
   title: 'Chorus field note',
   description: 'Features as live controls: one field note the app makes stays pinned on the left while the reader works the controls on the right — language, Latin names, offline, night mode, postcard — and each one changes the note at once.',
   icon: 'admin-settings',
@@ -330,7 +335,7 @@ export const notes: CustomBlockDef = {
 .ch-notes__stage{position:sticky;top:var(--pp-header-h, 0px);height:calc(100svh - var(--pp-header-h, 0px));display:grid;place-items:center;background:${C('muted')};margin-left:calc(var(--wp--preset--spacing--50) * -1)}
 .ch-note{width:min(88%,26rem);padding:1rem;display:flex;flex-direction:column;gap:.6rem;transition:background-color .3s,color .3s}
 .ch-note__plate{width:100%;height:12rem;object-position:50% 30%;transition:height .4s ${EASE}}
-.ch-note__spec{height:4.5rem;border-radius:10px;background:${MIX(C('contrast'), 80, 'black')};transition:height .4s ${EASE}}
+.ch-note__spec{height:4.5rem;border-radius:${R('md')};background:${MIX(C('contrast'), 80, 'black')};transition:height .4s ${EASE}}
 .ch-note__name{font-size:1.5rem;font-weight:600;letter-spacing:-.02em}
 .ch-note__sl,.ch-note__de,.ch-note__online{display:none}
 .ch-note__meta,.ch-note__sync{color:var(--ui-soft)}
@@ -362,7 +367,9 @@ export const notes: CustomBlockDef = {
 .ch-notes:has(.ch-notes__card:checked) .ch-note__plate{height:17rem}
 .ch-notes:has(.ch-notes__card:checked) .ch-note__spec{height:2.5rem}
 @media (max-width:760px){.ch-notes{grid-template-columns:1fr}.ch-notes__stage{height:42svh;z-index:2;margin-left:calc(var(--wp--preset--spacing--50) * -1);margin-right:calc(var(--wp--preset--spacing--50) * -1);overflow:hidden;align-items:start;padding-top:1rem}
-.ch-note{transform:scale(.82);transform-origin:top center}.ch-notes__col{padding:2rem 0 10vh}.ch-cap{min-height:0;margin-bottom:3rem}.ch-cap__t{font-size:1.375rem}}`,
+.ch-note{transform:scale(.82);transform-origin:top center}.ch-notes__col{padding:2rem 0 10vh}.ch-cap{min-height:0;margin-bottom:3rem}.ch-cap__t{font-size:1.375rem}}
+@media (prefers-reduced-motion:no-preference){@supports (animation-timeline:view()){.ch-cap{animation:ch-enter linear both;animation-timeline:view();animation-range:entry 5% entry 55%}}}
+@keyframes ch-enter{from{opacity:0;transform:translateY(1.5rem)}}`,
 };
 
 // ---------- pricing: plan names, one live figure ----------
@@ -376,6 +383,7 @@ const PLAN = (i: number, name: string, price: string, period: string, text: stri
 
 export const plans: CustomBlockDef = {
   name: 'prepress/chorus-plans',
+  kind: 'interactive',
   title: 'Chorus plans',
   description: 'Pricing as a list of plan names; the price, what it includes and a button for the selected plan fill one stage that never moves. The middle plan is selected first. No script.',
   icon: 'money-alt',
@@ -402,7 +410,7 @@ export const plans: CustomBlockDef = {
 .ch-plans__price{font-family:${FONT};font-weight:600;font-size:clamp(4rem,9vw,8rem);line-height:.9;letter-spacing:-.05em;font-variant-numeric:tabular-nums}
 .ch-plans__price span{font-size:1.125rem;font-weight:400;letter-spacing:0}
 .ch-plans__about{max-width:32rem;margin-top:1.5rem!important;font-family:${FONT};font-size:1.125rem;line-height:1.5}
-.ch-plans__btn{display:inline-block;margin-top:2rem;padding:1em 1.6em;border-radius:6px;background:${C('primary')};color:${C('base')}!important;font-family:${FONT};font-weight:500;text-decoration:none!important;transition:background-color .2s,transform .15s}
+.ch-plans .ch-plans__btn{display:inline-block;margin-top:2rem;padding:1em 1.6em;border-radius:${R('md')};background:${C('primary')};color:${C('base')};font-family:${FONT};font-weight:500;text-decoration:none;transition:background-color .2s,transform .15s}
 .ch-plans__btn:hover{background:${C('contrast')}}
 .ch-plans__btn:active{transform:translateY(1px)}
 ${[1, 2, 3].map((i) => `.ch-plans:has(.ch-plans__in--${i}:checked) .ch-plans__plan--${i}{display:block}`).join('\n')}

@@ -3,7 +3,8 @@
  * base is the night, contrast the moonlight. Lantern amber is the only accent
  * (≈8:1 on base, so it works as text and as a button with dark text).
  */
-import type { Design } from '../../src/lib/types';
+import type { BlockStyleDef, Design } from '../../src/lib/types';
+import { blockStyle, color, font, radius } from '../kit';
 
 export const DESIGN: Design = {
   palette: {
@@ -74,11 +75,45 @@ export const THEME_JSON = {
       '.wp-block-button.is-style-outline>.wp-block-button__link:not(.has-text-color){color:var(--wp--preset--color--contrast)}',
       '.wp-block-button.is-style-outline>.wp-block-button__link:hover{background:var(--wp--preset--color--contrast);color:var(--wp--preset--color--base)}',
       '.wp-block-separator{border:0;border-top:1px solid color-mix(in srgb,currentColor 22%,transparent);opacity:1}',
-      '@media (max-width:640px){.ng-header-cta{display:none!important}}',
       '@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}',
     ].join('\n'),
   },
 };
+
+const MONO = font('mono');
+const MIX = (slug: string, pct: number, other = 'transparent') => `color-mix(in srgb, ${color(slug)} ${pct}%, ${other})`;
+const S = (slug: string, label: string, types: string[], css: string) => blockStyle('garden', slug, label, types, { css });
+/** One line of opening hours: days — dotted leader — time, an optional note underneath. */
+const HOURS = `display:flex;flex-wrap:wrap;align-items:baseline;gap:0 .6em;margin-block-start:.2rem!important;margin-block-end:0;padding:.55em 0;border-bottom:1px solid ${MIX('contrast', 14)};
+&::after{content:"";order:1;flex:1 1 1rem;border-bottom:1px dotted ${MIX('contrast', 35)};transform:translateY(-.3em)}
+& > p{margin:0!important}
+& > p:first-child{font-family:${font('heading')};font-style:italic;font-size:1.3rem}
+& > p:nth-child(2){order:2;font-family:${MONO};font-size:.85rem;letter-spacing:.04em;font-variant-numeric:tabular-nums}
+& > p:nth-child(3){order:3;flex-basis:100%;font-family:${MONO};font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:${color('accent')}}`;
+
+/** Night Garden's named looks for core blocks: picked (or removed) in each block's Styles panel. */
+export const BLOCK_STYLES: BlockStyleDef[] = [
+  S('dish', 'Menu item (dot leader)', ['core/group'], `margin-block-start:1.4rem;
+& > .wp-block-group{display:flex;flex-wrap:nowrap;align-items:baseline;gap:.55em;margin:0!important}
+& > .wp-block-group::after{content:"";order:1;flex:1 1 1.5rem;min-width:1rem;border-bottom:1px dotted ${MIX('contrast', 40)};transform:translateY(-.3em)}
+& > .wp-block-group > p{margin:0!important}
+& > .wp-block-group > p:first-child{font-family:${font('heading')};font-weight:500;font-size:1.45rem;line-height:1.15;text-wrap:balance}
+& > .wp-block-group > p:not(:first-child,:last-child){flex:none;font-family:${MONO};font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:${color('accent')}}
+& > .wp-block-group > p:last-child:not(:first-child){order:2;flex:none;font-family:${MONO};font-size:.95rem;font-variant-numeric:tabular-nums}
+& > p{margin:.3em 0 0!important;max-width:34em;font-family:${font('body')};font-size:.92rem;line-height:1.5;color:${MIX('contrast', 74, color('base'))}}`),
+  S('hours', 'Opening hours (dot leader)', ['core/group'], HOURS),
+  S('hours-closed', 'Opening hours, closed (dimmed)', ['core/group'], `${HOURS}
+opacity:.5;`),
+  S('reserve', 'Reservation card (glowing)', ['core/group'], `position:relative;isolation:isolate;padding:clamp(2rem,5vw,3.75rem) clamp(1.5rem,5vw,4rem)!important;border:1px solid ${MIX('accent', 45)};border-radius:${radius('lg')};background:${color('muted')};text-align:center;box-shadow:0 0 0 6px ${MIX('accent', 6)},0 30px 120px -20px ${MIX('accent', 30)};
+& > p:first-child{margin:0;font-family:${MONO};font-size:.72rem;letter-spacing:.2em;text-transform:uppercase;color:${color('accent')}}
+& > h2{margin:.4em 0 0!important;font-family:${font('heading')};font-style:italic;font-weight:300;font-size:clamp(2.2rem,5vw,3.6rem);line-height:1;letter-spacing:0}
+& > h2 + p{margin:1em auto 0!important;max-width:34em;color:${MIX('contrast', 80, color('base'))}}
+& > .wp-block-group{gap:1rem 1.5rem;margin:1.8em 0 0!important;align-items:center}
+& > .wp-block-group > .wp-block-buttons{margin:0}
+& > .wp-block-group > p{margin:0;font-family:${MONO};font-size:.8rem;letter-spacing:.06em}
+& > .wp-block-group > p a{color:inherit}`),
+  S('desktop-only', 'Hidden on phones', ['core/buttons', 'core/group'], '@media (max-width:640px){&{display:none!important}}'),
+];
 
 export const STYLE = {
   key: 'style',

@@ -1,22 +1,20 @@
 /**
- * Night Garden — patterns: sections made of core blocks and the garden blocks.
- * Copy is written for "Nocturne", an evening garden restaurant and wine bar in
- * a Ljubljana courtyard.
+ * Night Garden — patterns: sections made of core blocks, the set's block
+ * styles (style.ts) and the garden blocks. Copy is written for "Nocturne", an
+ * evening garden restaurant and wine bar in a Ljubljana courtyard.
  */
 import type { BlockNode } from '../../src/lib/types';
+import { b, cols as kitCols, group, h, is, p, row, section as kitSection, SP, type SetPattern } from '../kit';
 
+export { b, h, p, SP };
 type Tone = 'night' | 'dusk' | 'leaf';
-const TONE: Record<Tone, { backgroundColor: string; textColor: string }> = {
-  night: { backgroundColor: 'base', textColor: 'contrast' },
-  dusk: { backgroundColor: 'muted', textColor: 'contrast' },
-  leaf: { backgroundColor: 'secondary', textColor: 'contrast' },
+const TONE: Record<Tone, { bg: string; text: string }> = {
+  night: { bg: 'base', text: 'contrast' },
+  dusk: { bg: 'muted', text: 'contrast' },
+  leaf: { bg: 'secondary', text: 'contrast' },
 };
-export const SP = (n: number) => `var:preset|spacing|${n}`;
 
-export const b = (name: string, attributes: Record<string, unknown> = {}, innerBlocks: BlockNode[] = []): BlockNode => ({ name, attributes, ...(innerBlocks.length ? { innerBlocks } : {}) });
-export const ng = (slug: string, attributes: Record<string, unknown> = {}) => b(`prepress/garden-${slug}`, attributes);
-export const p = (content: string, attributes: Record<string, unknown> = {}) => b('core/paragraph', { content, ...attributes });
-export const h = (content: string, level: number, attributes: Record<string, unknown> = {}) => b('core/heading', { content, level, ...attributes });
+export const ng = (slug: string, attributes: Record<string, unknown> = {}, innerBlocks: BlockNode[] = []) => b(`prepress/garden-${slug}`, attributes, innerBlocks);
 /** Small mono label in lantern amber. */
 export const label = (content: string, attributes: Record<string, any> = {}) =>
   p(content, { fontFamily: 'mono', fontSize: 'small', textColor: 'accent', ...attributes, style: { ...attributes.style, typography: { letterSpacing: '0.2em', textTransform: 'uppercase', ...attributes.style?.typography } } });
@@ -24,34 +22,33 @@ const center = { style: { typography: { textAlign: 'center' } } };
 const buttons = (items: { text: string; url: string; outline?: boolean }[], attrs: Record<string, unknown> = {}) =>
   b('core/buttons', attrs, items.map((i) => b('core/button', { text: i.text, url: i.url, ...(i.outline ? { className: 'is-style-outline' } : {}) })));
 const cols = (widths: string[], children: BlockNode[][], gap = 70, attrs: Record<string, unknown> = {}) =>
-  b('core/columns', { align: 'wide', style: { spacing: { blockGap: { left: SP(gap), top: SP(60) } } }, ...attrs }, children.map((c, i) => b('core/column', widths[i] ? { width: widths[i] } : {}, c)));
+  kitCols(widths, children, { style: { spacing: { blockGap: { left: SP(gap), top: SP(60) } } }, ...attrs });
 
 /** A full-width section in one of the three tones. */
 export function section(name: string, tone: Tone, children: BlockNode[], pad: { top?: number; bottom?: number; gap?: number; anchor?: string } = {}): BlockNode {
-  return b(
-    'core/group',
-    {
-      metadata: { name },
-      ...(pad.anchor ? { anchor: pad.anchor } : {}),
-      align: 'full',
-      ...TONE[tone],
-      style: { spacing: { padding: { top: SP(pad.top ?? 80), bottom: SP(pad.bottom ?? 80), left: SP(50), right: SP(50) }, margin: { top: '0', bottom: '0' }, blockGap: SP(pad.gap ?? 50) } },
-      layout: { type: 'constrained' },
-    },
-    children,
-  );
+  return kitSection(name, TONE[tone], children, pad);
 }
 
-const dish = (name: string, price: string, description: string, marks = '') => ng('menu-item', { name, price, description, marks });
-const hoursRow = (days: string, time: string, note = '', closed = false) => ng('hours', { days, time, note, ...(closed ? { closed: true } : {}) });
+// ---------- records: core blocks + the set's block styles (style.ts) ----------
 
-export interface SetPattern {
-  key: string;
-  title: string;
-  description: string;
-  tags: string[];
-  sections: BlockNode[];
-}
+/** One dish: name, dietary marks — dotted leader — price, and a line of description. */
+const dish = (name: string, price: string, description: string, marks = '') =>
+  group({ className: is('garden-dish') }, [row({}, [p(name), ...(marks ? [p(marks)] : []), p(price)]), p(description)]);
+/** One line of opening hours; "closed" dims it. */
+const hoursRow = (days: string, time: string, note = '', closed = false) =>
+  row({ className: is(closed ? 'garden-hours-closed' : 'garden-hours'), layout: { flexWrap: 'wrap' } }, [p(days), p(time), ...(note ? [p(note)] : [])]);
+const hoursList = (list: BlockNode[]) => group({ style: { spacing: { blockGap: '0' } } }, list);
+/** The reservation card: a link to the booking page and a phone number. No form. */
+const reserveCard = (o: { eyebrow?: string; title?: string; detail?: string; label?: string; url?: string; phone?: string; tel?: string } = {}) =>
+  group({ className: is('garden-reserve') }, [
+    p(o.eyebrow ?? 'Reservations'),
+    h(o.title ?? 'Keep a table in the garden', 2),
+    p(o.detail ?? 'Wednesday to Saturday from five. Walk-ins welcome at the bar; the garden is best booked.'),
+    row({ layout: { flexWrap: 'wrap', justifyContent: 'center' } }, [
+      buttons([{ text: `${o.label ?? 'Book a table'} →`, url: o.url ?? 'https://example.com/book' }]),
+      p(`or call <a href="tel:${o.tel ?? '+38612345678'}">${o.phone ?? '+386 1 234 5678'}</a>`),
+    ]),
+  ]);
 
 const PICS = 'https://prepress.s3.fr-par.scw.cloud/_library/nocturne';
 /** An arch holding one of the set's photographs. */
@@ -60,6 +57,7 @@ const photo = (file: string, alt: string, attributes: Record<string, unknown>) =
 export const PATTERNS: SetPattern[] = [
   {
     key: 'hero',
+    role: 'hero',
     title: 'Night Garden hero',
     description: 'A lantern-lit italic headline with fireflies, a short welcome and two pill buttons, beside a tall arch with a photograph of the courtyard at night.',
     tags: ['hero', 'restaurant', 'dark'],
@@ -67,7 +65,10 @@ export const PATTERNS: SetPattern[] = [
       section('Hero', 'night', [
         cols(['56%', '44%'], [
           [
-            ng('glow', { eyebrow: 'Garden restaurant & wine bar · Ljubljana', title: 'Dinner under<br>the <em>lanterns</em>', light: 'amber', fireflies: true }),
+            ng('glow', { light: 'amber', fireflies: true }, [
+              label('Garden restaurant & wine bar · Ljubljana'),
+              h('Dinner under<br>the <em>lanterns</em>', 1, { fontSize: 'grand', style: { typography: { lineHeight: '0.92', letterSpacing: '-0.02em' } } }),
+            ]),
             p('A walled courtyard behind Gornji trg, open from dusk. Small plates from the fire, natural wine from the Karst and a garden that smells of fig leaves after rain.', { fontSize: 'large' }),
             buttons([{ text: 'Book a table', url: '#reserve' }, { text: 'See the menu', url: '/menu/', outline: true }]),
           ],
@@ -78,6 +79,7 @@ export const PATTERNS: SetPattern[] = [
   },
   {
     key: 'story',
+    role: 'story',
     title: 'Night Garden story',
     description: 'Our story: an arched photograph of the grill at dusk beside a label, heading, two paragraphs and a slowly turning seal.',
     tags: ['about', 'story', 'restaurant'],
@@ -98,6 +100,7 @@ export const PATTERNS: SetPattern[] = [
   },
   {
     key: 'menu',
+    role: 'menu',
     title: 'Night Garden menu',
     description: 'A menu section: heading and vine, then two columns of courses with dishes, prices joined by dotted leaders and dietary marks, and a key in mono.',
     tags: ['menu', 'food', 'prices'],
@@ -130,6 +133,7 @@ export const PATTERNS: SetPattern[] = [
   },
   {
     key: 'evenings',
+    role: 'features',
     title: 'Night Garden evenings',
     description: 'Evenings and events: three arched photographs — fish, records, a long supper table — each with a mono date line, a title and one sentence.',
     tags: ['events', 'cards', 'restaurant'],
@@ -147,6 +151,7 @@ export const PATTERNS: SetPattern[] = [
   },
   {
     key: 'visit',
+    role: 'contact',
     title: 'Night Garden visit',
     description: 'Hours and directions: a timetable of opening hours with dotted leaders beside the address, how to find the gate, a directions button and a line-drawn fern.',
     tags: ['hours', 'location', 'contact'],
@@ -156,7 +161,7 @@ export const PATTERNS: SetPattern[] = [
           [
             label('Opening hours'),
             h('When the lanterns are on', 2, { fontSize: 'xx-large' }),
-            b('core/group', { layout: { type: 'default' }, style: { spacing: { blockGap: '0' } } }, [
+            hoursList([
               hoursRow('Monday – Tuesday', 'Closed', '', true),
               hoursRow('Wednesday – Thursday', '17:00 – 23:00', 'Kitchen until 22:00'),
               hoursRow('Friday – Saturday', '17:00 – 00:30', 'Kitchen until 22:30'),
@@ -177,15 +182,17 @@ export const PATTERNS: SetPattern[] = [
   },
   {
     key: 'reserve',
+    role: 'cta',
     title: 'Night Garden reservation',
     description: 'The reservation card glowing on the night background: a title, one line about when to come, a booking button and a phone number.',
     tags: ['cta', 'booking', 'restaurant'],
     sections: [
-      section('Reserve', 'night', [ng('reserve')], { top: 80, bottom: 80, anchor: 'reserve' }),
+      section('Reserve', 'night', [reserveCard()], { top: 80, bottom: 80, anchor: 'reserve' }),
     ],
   },
   {
     key: 'press',
+    role: 'testimonial',
     title: 'Night Garden press',
     description: 'Kind words: three short italic quotes in large Cormorant with their sources in mono, on the leaf-green band.',
     tags: ['testimonials', 'press', 'quotes'],
@@ -202,6 +209,7 @@ export const PATTERNS: SetPattern[] = [
   },
   {
     key: 'private-dining',
+    role: 'showcase',
     title: 'Night Garden private dining',
     description: 'Private dining: a label, heading, a paragraph, the facts in mono and a button, beside a tall arched photograph of the glasshouse set for dinner.',
     tags: ['private', 'events', 'booking'],
@@ -222,6 +230,7 @@ export const PATTERNS: SetPattern[] = [
   },
   {
     key: 'gallery',
+    role: 'gallery',
     title: 'Night Garden arches',
     description: 'A row of three arched photographs from the garden at night — the north wall, the kitchen beds, the fig tree — with captions.',
     tags: ['gallery', 'illustration', 'decor'],
@@ -237,6 +246,7 @@ export const PATTERNS: SetPattern[] = [
   },
   {
     key: 'page-title',
+    role: 'page-title',
     title: 'Night Garden page title',
     description: 'A page opener: amber mono label, a large italic headline under a soft moon glow, a line of introduction and a vine.',
     tags: ['title', 'header'],
@@ -272,7 +282,7 @@ export const HEADER: BlockNode[] = [
             b('core/navigation-link', { label: 'Visit', url: '/visit/', kind: 'custom' }),
             b('core/navigation-link', { label: 'Private dining', url: '/private-dining/', kind: 'custom' }),
           ]),
-          b('core/buttons', { className: 'ng-header-cta' }, [b('core/button', { text: 'Book', url: '#reserve' })]),
+          b('core/buttons', { className: is('garden-desktop-only') }, [b('core/button', { text: 'Book', url: '#reserve' })]),
         ]),
       ]),
     ],
@@ -299,7 +309,7 @@ export const FOOTER: BlockNode[] = [
         ],
         [
           label('Evenings'),
-          b('core/group', { layout: { type: 'default' }, style: { spacing: { blockGap: '0' } } }, [
+          hoursList([
             hoursRow('Wed – Thu', '17 – 23'),
             hoursRow('Fri – Sat', '17 – 00:30'),
             hoursRow('Sunday', '12 – 18'),

@@ -4,7 +4,8 @@
  * actions; Bricolage Grotesque throughout. The interface fragments carry the
  * colour; the page stays quiet around them.
  */
-import type { Design } from '../../src/lib/types';
+import type { BlockStyleDef, Design } from '../../src/lib/types';
+import { blockStyle, color, radius } from '../kit';
 
 export const DESIGN: Design = {
   palette: {
@@ -24,53 +25,23 @@ export const DESIGN: Design = {
   wideSize: '1320px',
 };
 
-const v = (slug: string) => `var(--wp--preset--color--${slug})`;
 const EASE = 'cubic-bezier(.2,.7,.2,1)';
+const ENTER_KEYS = '@keyframes ch-enter{from{opacity:0;transform:translateY(1.5rem)}}';
 
 const CSS = [
   'body{-webkit-font-smoothing:antialiased;font-optical-sizing:auto}',
   'h1,h2,h3{text-wrap:balance}',
   'p{text-wrap:pretty}',
   'a{text-decoration-thickness:1px;text-underline-offset:.2em}',
-  `::selection{background:${v('primary')};color:${v('base')}}`,
-  `:where(a,button,summary,label,[tabindex]):focus-visible{outline:2px solid ${v('primary')};outline-offset:3px}`,
-  `.wp-element-button,.wp-block-button__link{border-radius:6px;transition:background-color .2s,transform .15s}`,
+  `::selection{background:${color('primary')};color:${color('base')}}`,
+  `:where(a,button,summary,label,[tabindex]):focus-visible{outline:2px solid ${color('primary')};outline-offset:3px}`,
+  `.wp-element-button,.wp-block-button__link{border-radius:${radius('md')};transition:background-color .2s,transform .15s}`,
   `.wp-element-button:active,.wp-block-button__link:active{transform:translateY(1px)}`,
-  // Header
-  `.ch-header .wp-block-navigation a{text-decoration:none}.ch-header .wp-block-navigation a:hover{text-decoration:underline}`,
-  `@media (max-width:700px){.ch-header .wp-block-navigation .wp-block-navigation-item:not(:first-child){display:none}.ch-header .alignwide{flex-wrap:nowrap!important}}`,
-  // FAQ: sticky heading beside filled tiles; the open tile turns teal
-  `.ch-faq-h{position:sticky;top:calc(var(--pp-header-h, 0px) + 2rem)}`,
-  `@media (max-width:781px){.ch-faq-h{position:static}}`,
-  `.ch-tiles .wp-block-details{margin-top:8px!important;padding:0 1.5rem;background:${v('secondary')};border-radius:6px;border:0;transition:background-color .25s}`,
-  `.ch-tiles .wp-block-details summary{list-style:none;display:flex;justify-content:space-between;align-items:center;gap:1rem;min-height:4.5rem;font-weight:500;font-size:1.125rem;cursor:pointer}`,
-  `.ch-tiles .wp-block-details summary::-webkit-details-marker{display:none}`,
-  `.ch-tiles .wp-block-details summary::after{content:"";flex:none;width:1rem;height:1rem;background:linear-gradient(currentColor,currentColor) center/100% 3px no-repeat,linear-gradient(currentColor,currentColor) center/3px 100% no-repeat;transition:transform .25s ${EASE}} /* taste-skill-ignore: two drawn bars, no fill gradient */`,
-  `.ch-tiles .wp-block-details:hover{background:${v('muted')}}`,
-  `.ch-tiles .wp-block-details[open]{background:${v('primary')};color:${v('base')}}`,
-  `.ch-tiles .wp-block-details[open] summary::after{transform:rotate(45deg)}`,
-  `.ch-tiles .wp-block-details>:not(summary){max-width:52ch;margin-top:0;padding-bottom:1.5rem}`,
-  // CTA: the sentence ends in the two buttons, set at the sentence's size
-  `.ch-blank .wp-block-button__link{font-size:clamp(1.5rem,1rem + 2.4vw,3rem);font-weight:600;letter-spacing:-.03em;padding:.25em .6em;border-radius:8px}`,
-  `.ch-blank .wp-block-button:last-child .wp-block-button__link{background:${v('contrast')}}`,
-  // Footer: a board of tiles
-  `.ch-board{gap:8px!important}`,
-  `.ch-board>*{border-radius:6px;min-height:13.75rem;display:flex;flex-direction:column;justify-content:space-between}`,
-  `.ch-board .ch-span-4{grid-column:span 4}.ch-board .ch-span-3{grid-column:span 3}.ch-board .ch-span-2{grid-column:span 2}.ch-board .ch-span-8{grid-column:span 8;min-height:20rem;justify-content:center}`,
-  `.ch-wordmark{font-size:clamp(4rem,11vw,10rem)!important;line-height:.9!important;letter-spacing:-.05em!important;text-align:center}`,
-  `.ch-go{transition:background-color .2s}.ch-go:hover{background:${v('contrast')}!important}`,
-  `.ch-go a{text-decoration:none;color:inherit}.ch-go a::after{content:"";position:absolute;inset:0}.ch-go{position:relative}`,
-  `.ch-arrow{font-size:clamp(3rem,6vw,5rem)!important;line-height:1!important;align-self:flex-end;transition:transform .25s ${EASE}}.ch-go:hover .ch-arrow{transform:translateX(.4rem)}`,
-  `@media (max-width:781px){.ch-board{grid-template-columns:repeat(2,minmax(0,1fr))!important}.ch-board>*{grid-column:span 1!important;min-height:9rem;min-width:0;overflow-wrap:anywhere}.ch-board .ch-span-8,.ch-board .ch-go{grid-column:span 2!important;order:-1}.ch-board .ch-span-8{order:-2;min-height:10rem}}`,
-  // Plates as a strip (the birds it knows)
-  `.ch-plates img{aspect-ratio:5/8;object-fit:cover;width:100%;height:auto;border-radius:6px}`,
-  // Entrances: heading, text, then the fragment
+  // Entrances: each section's children rise in as they scroll into view (the pinned blocks keep still)
   `@media (prefers-reduced-motion:no-preference){@supports (animation-timeline:view()){`,
-  `.entry-content>.alignfull>*:not(.wp-block-prepress-chorus-notes):not(.wp-block-prepress-chorus-stages),.ch-tiles>*,.ch-plates>*,.ch-cap{animation:ch-enter linear both;animation-timeline:view();animation-range:entry 5% entry 55%}`,
-  `.ch-tiles>*:nth-child(2n),.ch-plates>*:nth-child(2){animation-range:entry 10% entry 62%}`,
-  `.ch-plates>*:nth-child(3){animation-range:entry 15% entry 70%}`,
+  `.entry-content>.alignfull>*:not(.wp-block-prepress-chorus-notes):not(.wp-block-prepress-chorus-stages){animation:ch-enter linear both;animation-timeline:view();animation-range:entry 5% entry 55%}`,
   `}}`,
-  `@keyframes ch-enter{from{opacity:0;transform:translateY(1.5rem)}}`,
+  ENTER_KEYS,
   '@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}',
   'html{scroll-behavior:smooth}',
 ].join('\n');
@@ -107,6 +78,58 @@ export const THEME_JSON = {
     css: CSS,
   },
 };
+
+/** The same rise-in the site CSS gives every section's children, for children inside a styled block. */
+const ENTER = (sel: string, ranges: [string, string][] = []) => `@media (prefers-reduced-motion:no-preference){@supports (animation-timeline:view()){${sel}{animation:ch-enter linear both;animation-timeline:view();animation-range:entry 5% entry 55%}${ranges.map(([s, r]) => `${s}{animation-range:${r}}`).join('')}}}
+${ENTER_KEYS}`;
+const S = (slug: string, label: string, types: string[], css: string) => blockStyle('chorus', slug, label, types, { css });
+/** Board tiles in order: copyright, menu, place, write to us, wordmark, get the app (of 12 columns). */
+
+/** Frost's named looks for core blocks: picked (or removed) in each block's Styles panel. */
+export const BLOCK_STYLES: BlockStyleDef[] = [
+  S('header', 'Frost header', ['core/group'], `& .wp-block-navigation a{text-decoration:none}
+& .wp-block-navigation a:hover{text-decoration:underline}
+@media (max-width:700px){& .wp-block-navigation .wp-block-navigation-item:not(:first-child){display:none}& .alignwide{flex-wrap:nowrap!important}}`),
+  S('sticky', 'Sticky beside its column', ['core/heading', 'core/group'], `position:sticky;top:calc(var(--pp-header-h, 0px) + 2rem);
+@media (max-width:781px){&{position:static}}`),
+  // FAQ: filled tiles; the open tile turns teal
+  S('tiles', 'Questions as filled tiles', ['core/column', 'core/group'], `& .wp-block-details{margin-top:8px!important;padding:0 1.5rem;background:${color('secondary')};border-radius:${radius('md')};border:0;transition:background-color .25s}
+& .wp-block-details summary{list-style:none;display:flex;justify-content:space-between;align-items:center;gap:1rem;min-height:4.5rem;font-weight:500;font-size:1.125rem;cursor:pointer}
+& .wp-block-details summary::-webkit-details-marker{display:none}
+& .wp-block-details summary::after{content:"";flex:none;width:1rem;height:1rem;background:linear-gradient(currentColor,currentColor) center/100% 3px no-repeat,linear-gradient(currentColor,currentColor) center/3px 100% no-repeat;transition:transform .25s ${EASE}} /* taste-skill-ignore: two drawn bars, no fill gradient */
+& .wp-block-details:hover{background:${color('muted')}}
+& .wp-block-details[open]{background:${color('primary')};color:${color('base')}}
+& .wp-block-details[open] summary::after{transform:rotate(45deg)}
+& .wp-block-details>:not(summary){max-width:52ch;margin-top:0;padding-bottom:1.5rem}
+${ENTER('&>*', [['&>*:nth-child(2n)', 'entry 10% entry 62%']])}`),
+  // CTA: the sentence ends in the two buttons, set at the sentence's size
+  S('sentence', 'Buttons at sentence size', ['core/buttons'], `& .wp-block-button__link{font-size:clamp(1.5rem,1rem + 2.4vw,3rem);font-weight:600;letter-spacing:-.03em;padding:.25em .6em;border-radius:${radius('md')}}
+& .wp-block-button:last-child .wp-block-button__link{background:${color('contrast')}}`),
+  // Footer: a board of tiles. The spans are the tiles' own grid column spans (block settings).
+  S('board', 'Board of tiles', ['core/group'], `gap:8px!important;
+&>*{border-radius:${radius('md')};min-height:13.75rem;display:flex;flex-direction:column;justify-content:space-between}
+&>:has(>.is-style-chorus-wordmark){min-height:20rem;justify-content:center}
+@media (max-width:781px){&{grid-template-columns:repeat(2,minmax(0,1fr))!important}&>*{grid-column:span 1!important;min-height:9rem;min-width:0;overflow-wrap:anywhere}&>:has(>.is-style-chorus-wordmark),&>.is-style-chorus-go{grid-column:span 2!important;order:-1}&>:has(>.is-style-chorus-wordmark){order:-2;min-height:10rem}}`),
+  S('wordmark', 'Wordmark', ['core/paragraph'], 'font-size:clamp(4rem,11vw,10rem);line-height:.9;letter-spacing:-.05em;text-align:center'),
+  // A whole tile that is one link; it darkens on hover and its arrow moves
+  S('go', 'Link tile', ['core/group'], `position:relative;transition:box-shadow .2s;
+&:hover{box-shadow:inset 0 0 0 100vmax ${color('contrast')}}
+& a{text-decoration:none;color:inherit}
+& a::after{content:"";position:absolute;inset:0}
+&:hover .is-style-chorus-arrow{transform:translateX(.4rem)}`),
+  S('arrow', 'Arrow', ['core/paragraph'], `font-size:clamp(3rem,6vw,5rem);line-height:1;align-self:flex-end;transition:transform .25s ${EASE}`),
+  // Plates as a strip (the birds it knows)
+  S('plates', 'Strip of tall plates', ['core/columns'], `& img{aspect-ratio:5/8;object-fit:cover;width:100%;height:auto;border-radius:${radius('md')}}
+${ENTER('&>*', [['&>*:nth-child(2)', 'entry 10% entry 62%'], ['&>*:nth-child(3)', 'entry 15% entry 70%']])}`),
+  S('places', 'Places (portrait photos, two-line captions)', ['core/columns'], `& img{aspect-ratio:4/5;object-fit:cover;width:100%;height:auto;border-radius:${radius('md')}}
+& figcaption{display:flex;flex-direction:column;gap:.15rem;margin-top:.75rem;font-size:var(--wp--preset--font-size--small);text-align:left;color:inherit}
+& figcaption strong{font-size:var(--wp--preset--font-size--medium);font-weight:600;letter-spacing:-.01em}
+${ENTER('&>*')}`),
+  S('wide-photo', 'Wide photograph (21:9)', ['core/image'], `margin-bottom:var(--wp--preset--spacing--40)!important;
+& img{aspect-ratio:21/9;object-fit:cover;width:100%;height:auto;border-radius:${radius('md')}}`),
+  S('dawn', 'Display line over a photograph', ['core/cover'], '& h2{font-size:clamp(2.5rem,1.2rem + 5vw,6rem);letter-spacing:-.04em;line-height:.95}'),
+  S('aside', 'Short line, flush left', ['core/paragraph'], 'max-width:34rem;margin-left:0!important'),
+];
 
 export const STYLE = {
   key: 'style',

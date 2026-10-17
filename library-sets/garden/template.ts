@@ -1,8 +1,6 @@
 /** Night Garden — the full-site template "Nocturne", composed from the set's patterns. */
-import type { BlockNode } from '../../src/lib/types';
+import type { PageSpec } from '../kit';
 import { h, label, ng, p, section } from './patterns';
-
-export type PageSpec = { title: string; slug: string; sections: (string | BlockNode)[] };
 
 const center = { style: { typography: { textAlign: 'center' } } };
 const title = (kicker: string, text: string, intro: string) =>

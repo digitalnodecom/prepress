@@ -1,8 +1,10 @@
 /**
  * Night Garden — blocks. Site-defined `prepress/garden-*` types for evening
- * places: a lantern-lit headline with fireflies, generated botanicals, arched
- * windows onto a night sky (the set's stand-in for photos), menu lines,
- * opening hours, a turning seal, a growing vine and a reservation card.
+ * places: a lantern glow with fireflies (an effect wrapper; its headline is
+ * inner core blocks), generated botanicals, arched windows onto a night sky
+ * (the set's stand-in for photos), a turning seal and a growing vine. Menu
+ * lines, opening hours and the reservation card are core blocks with the set's
+ * block styles (style.ts), so their text stays editable inline.
  *
  * Custom-block CSS is global, so every rule is namespaced under
  * `.wp-block-prepress-garden-<slug>` / `.ng-*`. Colours and faces come only
@@ -12,10 +14,7 @@ import type { CustomBlockDef } from '../../src/lib/types';
 
 const C = (slug: string) => `var(--wp--preset--color--${slug})`;
 const MIX = (slug: string, pct: number, other = 'transparent') => `color-mix(in srgb, ${C(slug)} ${pct}%, ${other})`;
-const HEADING = 'var(--wp--preset--font-family--heading)';
-const BODY = 'var(--wp--preset--font-family--body)';
 const MONO = 'var(--wp--preset--font-family--mono, ui-monospace, Menlo, monospace)';
-const EASE = 'cubic-bezier(.3,.6,.2,1)';
 
 // ---------- botanical generators (authoring time; no ids, so any number can share a page) ----------
 
@@ -175,25 +174,30 @@ const FLIES = Array.from({ length: 14 }, (_, i) => {
 
 export const glow: CustomBlockDef = {
   name: 'prepress/garden-glow',
-  title: 'Garden glow headline',
-  description: 'A large italic headline lit by a lantern (amber) or moon (cream) glow, with optional fireflies drifting through it. Wrap a word in italics to light it in the accent colour.',
+  title: 'Garden glow',
+  description: 'A lantern (amber) or moon (cream) glow behind its content, with optional fireflies drifting through it. Put the eyebrow and the big italic headline inside; italic words light up in the accent colour.',
   icon: 'lightbulb',
   category: 'design',
+  kind: 'effect',
   attributes: {
-    eyebrow: { type: 'string', label: 'Eyebrow', control: 'text', default: 'Garden restaurant & wine bar' },
-    title: { type: 'string', label: 'Headline', control: 'richtext', default: 'Dinner under<br>the <em>lanterns</em>' },
     light: { type: 'string', label: 'Light', control: 'select', options: ['amber', 'moon', 'both'], default: 'amber' },
     fireflies: { type: 'boolean', label: 'Fireflies', control: 'toggle', default: true },
   },
-  template: `<div class="ng-glow" data-light="{{light}}"><div class="ng-glow__light" aria-hidden="true"></div>{{#fireflies}}<div class="ng-flies" aria-hidden="true">${FLIES}</div>{{/fireflies}}{{#eyebrow}}<p class="ng-glow__eyebrow">{{eyebrow}}</p>{{/eyebrow}}<h1 class="ng-glow__title">{{title}}</h1></div>`,
+  innerBlocks: {
+    allowed: ['core/paragraph', 'core/heading', 'core/buttons'],
+    template: [
+      { name: 'core/paragraph', attributes: { content: 'Garden restaurant & wine bar', fontFamily: 'mono', fontSize: 'small', textColor: 'accent', style: { typography: { letterSpacing: '0.2em', textTransform: 'uppercase' } } } },
+      { name: 'core/heading', attributes: { content: 'Dinner under<br>the <em>lanterns</em>', level: 1, fontSize: 'grand', style: { typography: { lineHeight: '0.92', letterSpacing: '-0.02em' } } } },
+    ],
+  },
+  template: `<div class="ng-glow" data-light="{{light}}"><div class="ng-glow__light" aria-hidden="true"></div>{{#fireflies}}<div class="ng-flies" aria-hidden="true">${FLIES}</div>{{/fireflies}}{{{content}}}</div>`,
   css: `
 .ng-glow{position:relative;isolation:isolate;padding-block:clamp(1rem,4vw,3rem)}
 .ng-glow__light{position:absolute;z-index:-1;inset:-30% -20%;pointer-events:none;background:radial-gradient(closest-side at 32% 52%,${MIX('accent', 30)},${MIX('accent', 10)} 45%,transparent 75%)}
 .ng-glow[data-light=moon] .ng-glow__light{background:radial-gradient(closest-side at 62% 40%,${MIX('contrast', 20)},${MIX('contrast', 6)} 45%,transparent 75%)}
 .ng-glow[data-light=both] .ng-glow__light{background:radial-gradient(closest-side at 28% 60%,${MIX('accent', 28)},transparent 70%),radial-gradient(closest-side at 78% 28%,${MIX('contrast', 16)},transparent 70%)}
-.ng-glow__eyebrow{margin:0 0 1.2em;font-family:${MONO};font-size:.75rem;letter-spacing:.2em;text-transform:uppercase;color:${C('accent')}}
-.ng-glow__title{margin:0;font-family:${HEADING};font-style:italic;font-weight:300;font-size:var(--wp--preset--font-size--grand,clamp(3.4rem,9vw,8rem));line-height:.92;letter-spacing:-.02em;text-wrap:balance}
-.ng-glow__title em{font-style:italic;color:${C('accent')}}
+.ng-glow p{margin:0 0 1.2em}
+.ng-glow :is(h1,h2,h3){margin:0;text-wrap:balance}
 .ng-flies{position:absolute;inset:-10% -5%;z-index:-1;pointer-events:none}
 .ng-flies i{position:absolute;left:var(--x);top:var(--y);width:4px;height:4px;border-radius:50%;background:${C('accent')};box-shadow:0 0 6px 2px ${MIX('accent', 60)},0 0 18px 6px ${MIX('accent', 22)};opacity:.55}
 @media (prefers-reduced-motion:no-preference){.ng-flies i{animation:ng-fly var(--t) ease-in-out var(--d) infinite alternate,ng-blink calc(var(--t) * .45) ease-in-out var(--d) infinite alternate}}
@@ -207,6 +211,7 @@ export const botanical: CustomBlockDef = {
   description: 'A generated botanical — fern, monstera, eucalyptus, poppy or moonflower — as a filled silhouette or a fine line drawing, swaying slowly.',
   icon: 'palmtree',
   category: 'media',
+  kind: 'art',
   attributes: {
     motif: { type: 'string', label: 'Plant', control: 'select', options: MOTIFS, default: 'fern' },
     drawing: { type: 'string', label: 'Drawing', control: 'select', options: ['silhouette', 'line'], default: 'line' },
@@ -229,6 +234,7 @@ export const arch: CustomBlockDef = {
   description: 'An arched window: a photograph, or (with no photo) a night sky — moonlit, dusk or lantern amber — with a plant in silhouette against it.',
   icon: 'format-image',
   category: 'media',
+  kind: 'art',
   attributes: {
     motif: { type: 'string', label: 'Plant', control: 'select', options: MOTIFS, default: 'monstera' },
     sky: { type: 'string', label: 'Sky', control: 'select', options: ['moon', 'dusk', 'amber'], default: 'moon' },
@@ -258,52 +264,6 @@ ${PAINT('.ng-arch')}
 .ng-arch figcaption{margin-top:.9em;font-family:${MONO};font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;text-align:center;opacity:.75}`,
 };
 
-export const menuItem: CustomBlockDef = {
-  name: 'prepress/garden-menu-item',
-  title: 'Garden menu item',
-  description: 'One dish or drink: name and price joined by a dotted leader, dietary marks in the accent colour, and a short description underneath.',
-  icon: 'food',
-  category: 'text',
-  attributes: {
-    name: { type: 'string', label: 'Name', control: 'text', default: 'Charred leeks, hazelnut, brown butter' },
-    marks: { type: 'string', label: 'Marks', control: 'text', default: 'v · gf' },
-    price: { type: 'string', label: 'Price', control: 'text', default: '14' },
-    description: { type: 'string', label: 'Description', control: 'text', default: 'Leeks from Ana’s plot, cooked in the embers until sweet.' },
-  },
-  template: `<div class="ng-dish"><p class="ng-dish__head"><span class="ng-dish__name">{{name}}</span>{{#marks}}<span class="ng-dish__marks">{{marks}}</span>{{/marks}}<span class="ng-dish__dots" aria-hidden="true"></span><span class="ng-dish__price">{{price}}</span></p>{{#description}}<p class="ng-dish__desc">{{description}}</p>{{/description}}</div>`,
-  css: `
-.wp-block-prepress-garden-menu-item{margin-block-start:1.4rem}
-.ng-dish__head{display:flex;align-items:baseline;gap:.55em;margin:0}
-.ng-dish__name{font-family:${HEADING};font-weight:500;font-size:1.45rem;line-height:1.15;text-wrap:balance}
-.ng-dish__marks{flex:none;font-family:${MONO};font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:${C('accent')}}
-.ng-dish__dots{flex:1 1 1.5rem;min-width:1rem;border-bottom:1px dotted ${MIX('contrast', 40)};transform:translateY(-.3em)}
-.ng-dish__price{flex:none;font-family:${MONO};font-size:.95rem;font-variant-numeric:tabular-nums}
-.ng-dish__desc{margin:.3em 0 0;max-width:34em;font-family:${BODY};font-size:.92rem;line-height:1.5;color:${MIX('contrast', 74, C('base'))}}`,
-};
-
-export const hours: CustomBlockDef = {
-  name: 'prepress/garden-hours',
-  title: 'Garden opening hours',
-  description: 'One line of opening hours — days, times and an optional note — joined by a dotted leader. Stack them for a timetable; tick “closed” to dim a day.',
-  icon: 'clock',
-  category: 'text',
-  attributes: {
-    days: { type: 'string', label: 'Days', control: 'text', default: 'Wednesday – Saturday' },
-    time: { type: 'string', label: 'Hours', control: 'text', default: '17:00 – 00:00' },
-    note: { type: 'string', label: 'Note', control: 'text', default: '' },
-    closed: { type: 'boolean', label: 'Closed', control: 'toggle', default: false },
-  },
-  template: `<p class="ng-hours"{{#closed}} data-closed="true"{{/closed}}><span class="ng-hours__days">{{days}}</span><span class="ng-hours__dots" aria-hidden="true"></span><span class="ng-hours__time">{{time}}</span>{{#note}}<span class="ng-hours__note">{{note}}</span>{{/note}}</p>`,
-  css: `
-.wp-block-prepress-garden-hours{margin-block-start:.2rem!important}
-.ng-hours{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 .6em;margin:0;padding:.55em 0;border-bottom:1px solid ${MIX('contrast', 14)}}
-.ng-hours__days{font-family:${HEADING};font-style:italic;font-size:1.3rem}
-.ng-hours__dots{flex:1 1 1rem;border-bottom:1px dotted ${MIX('contrast', 35)};transform:translateY(-.3em)}
-.ng-hours__time{font-family:${MONO};font-size:.85rem;letter-spacing:.04em;font-variant-numeric:tabular-nums}
-.ng-hours__note{flex-basis:100%;font-family:${MONO};font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:${C('accent')}}
-.ng-hours[data-closed=true]{opacity:.5}`,
-};
-
 const SPRIG = `<path class="ng-seal__sprig" d="M100 128Q98 100 104 72${[0, 1, 2, 3, 4].map((i) => leaf(100 + (i % 2 ? 2 : -1), 120 - i * 11, i % 2 ? -0.5 : -2.6, 16 - i, 5)).join('')}"/>`;
 
 export const seal: CustomBlockDef = {
@@ -312,6 +272,7 @@ export const seal: CustomBlockDef = {
   description: 'A round seal: a line of text set around a circle, turning very slowly around a small sprig. For a season, a founding year or a motto.',
   icon: 'awards',
   category: 'design',
+  kind: 'art',
   attributes: {
     text: { type: 'string', label: 'Text around the circle', control: 'text', default: 'Autumn menu · Open evenings · Since 2019 · ' },
     size: { type: 'string', label: 'Size', control: 'select', options: ['s', 'm', 'l'], default: 'm' },
@@ -359,6 +320,7 @@ export const vine: CustomBlockDef = {
   description: 'A section break: a short vine with leaves and an amber bud between two hairlines. The vine grows in as it scrolls into view.',
   icon: 'minus',
   category: 'design',
+  kind: 'art',
   attributes: {
     position: { type: 'string', label: 'Position', control: 'select', options: ['center', 'left'], default: 'center' },
   },
@@ -375,31 +337,4 @@ export const vine: CustomBlockDef = {
 @keyframes ng-bloom{from{opacity:0}}`,
 };
 
-export const reserve: CustomBlockDef = {
-  name: 'prepress/garden-reserve',
-  title: 'Garden reservation card',
-  description: 'A softly glowing card that sends guests to your booking page, with a phone number for those who would rather call. A link, not a form.',
-  icon: 'calendar-alt',
-  category: 'widgets',
-  attributes: {
-    eyebrow: { type: 'string', label: 'Eyebrow', control: 'text', default: 'Reservations' },
-    title: { type: 'string', label: 'Title', control: 'text', default: 'Keep a table in the garden' },
-    detail: { type: 'string', label: 'Detail', control: 'text', default: 'Wednesday to Saturday from five. Walk-ins welcome at the bar; the garden is best booked.' },
-    label: { type: 'string', label: 'Button', control: 'text', default: 'Book a table' },
-    url: { type: 'string', label: 'Booking link', control: 'url', default: 'https://example.com/book' },
-    phone: { type: 'string', label: 'Phone', control: 'text', default: '+386 1 234 5678' },
-  },
-  template: `<div class="ng-res"><p class="ng-res__eyebrow">{{eyebrow}}</p><p class="ng-res__title">{{title}}</p>{{#detail}}<p class="ng-res__detail">{{detail}}</p>{{/detail}}<p class="ng-res__actions">{{#url}}<a class="ng-res__btn" href="{{url}}">{{label}}<span aria-hidden="true"> →</span></a>{{/url}}{{#phone}}<span class="ng-res__phone">or call <a href="tel:{{phone}}">{{phone}}</a></span>{{/phone}}</p></div>`,
-  css: `
-.ng-res{position:relative;isolation:isolate;padding:clamp(2rem,5vw,3.75rem) clamp(1.5rem,5vw,4rem);border:1px solid ${MIX('accent', 45)};border-radius:2rem;background:${C('muted')};text-align:center;box-shadow:0 0 0 6px ${MIX('accent', 6)},0 30px 120px -20px ${MIX('accent', 30)}}
-.ng-res__eyebrow{margin:0;font-family:${MONO};font-size:.72rem;letter-spacing:.2em;text-transform:uppercase;color:${C('accent')}}
-.ng-res__title{margin:.4em 0 0;font-family:${HEADING};font-style:italic;font-weight:300;font-size:clamp(2.2rem,5vw,3.6rem);line-height:1}
-.ng-res__detail{margin:1em auto 0;max-width:34em;color:${MIX('contrast', 80, C('base'))}}
-.ng-res__actions{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:1rem 1.5rem;margin:1.8em 0 0}
-.ng-res__btn{display:inline-block;padding:.95em 1.9em;border-radius:999px;background:${C('accent')};color:${C('base')};font-family:${MONO};font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;text-decoration:none;transition:background-color .25s,color .25s}
-.ng-res__btn:hover,.ng-res__btn:focus-visible{background:${C('contrast')};color:${C('base')}}
-.ng-res__phone{font-family:${MONO};font-size:.8rem;letter-spacing:.06em}
-.ng-res__phone a{color:inherit}`,
-};
-
-export const BLOCKS: CustomBlockDef[] = [glow, botanical, arch, menuItem, hours, seal, vine, reserve];
+export const BLOCKS: CustomBlockDef[] = [glow, botanical, arch, seal, vine];

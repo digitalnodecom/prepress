@@ -235,13 +235,13 @@ export function createSiteCore(opts: CoreOptions) {
   }
 
   /** Build the WordPress export zip from the current draft into <data>/exports. */
-  async function exportWordPress() {
+  async function exportWordPress(o: { blocks?: 'theme' | 'plugin' } = {}) {
     const engine = opts.engine;
     if (!engine) throw Object.assign(new Error('Server-side export is not available'), { status: 501 });
     const draft = store.read();
     if (!draft?.site?.pages?.length) throw Object.assign(new Error('There is no site to export yet'), { status: 400 });
     engine.registerCustomBlocks(draft.site.blocks ?? []);
-    const res = await engine.exportSite(draft.site);
+    const res = await engine.exportSite(draft.site, { blocks: o.blocks === 'plugin' ? 'plugin' : 'theme' });
     mkdirSync(exportsDir, { recursive: true });
     writeAtomic(join(exportsDir, res.filename), Buffer.from(res.bytes));
     return { file: res.filename, path: `/api/exports/${res.filename}`, localPath: join(exportsDir, res.filename), stats: res.stats };
@@ -367,7 +367,8 @@ export function createHandler(opts: ServerOptions) {
       return json(res, 200, { ok: true });
     }
     if (route === 'POST /api/export') {
-      return json(res, 200, await exportWordPress());
+      const body = await readJson(req).catch(() => null);
+      return json(res, 200, await exportWordPress({ blocks: body?.blocks === 'plugin' ? 'plugin' : 'theme' }));
     }
     if (route === 'POST /api/publish') {
       const body = await readJson(req);

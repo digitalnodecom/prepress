@@ -4,7 +4,8 @@
  * Paper, ink and one acid accent. The accent is only ever a *background* under
  * ink text (acid on paper fails contrast), never text on paper.
  */
-import type { Design } from '../../src/lib/types';
+import type { BlockStyleDef, Design } from '../../src/lib/types';
+import { blockStyle, color, font } from '../kit';
 
 export const DESIGN: Design = {
   palette: {
@@ -71,16 +72,76 @@ export const THEME_JSON = {
       '.has-accent-background-color .kx-hl{background:var(--wp--preset--color--contrast);color:var(--wp--preset--color--accent)}',
       ':where(h1,h2,h3,h4,.has-statement-font-size,.has-xx-large-font-size,.has-xxx-large-font-size,.has-display-font-size,.has-mega-font-size){overflow-wrap:normal;word-break:normal;hyphens:manual}',
       '.wp-block-separator.is-style-wide{border-top-width:1px}',
-      // Project pictures: square corners, an acid frame snaps in on hover, caption = client + meta.
-      '.kx-case img{display:block;width:100%;height:auto;transition:outline-offset .25s,outline-color .25s;outline:.5rem solid transparent;outline-offset:0}',
-      '.kx-case a:hover img,.kx-case a:focus-visible img{outline-color:var(--wp--preset--color--accent);outline-offset:-.5rem}',
-      '.kx-case figcaption{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.25rem 1rem;margin-top:.9rem;font-size:var(--wp--preset--font-size--small);font-weight:600;letter-spacing:.1em;text-transform:uppercase;text-align:left}',
-      '.kx-case figcaption strong{font-family:var(--wp--preset--font-family--heading);font-size:1.35rem;font-weight:800;letter-spacing:-.02em}',
-      '@media (max-width:640px){.kx-header-cta{display:none!important}}',
       '@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}',
     ].join('\n'),
   },
 };
+
+const HEADING = font('heading');
+const BODY = font('body');
+const EASE = 'cubic-bezier(.2,.7,.1,1)';
+const S = (slug: string, label: string, types: string[], css: string) => blockStyle('kinetic', slug, label, types, { css });
+
+/** Shared by the three pill looks: a fill slides in from the left on hover, the arrow slips through. */
+const PILL = (bg: string, text: string, fill: string, hover: string, border = color('contrast')) => `position:relative;display:inline-flex;align-items:center;gap:.8em;padding:.95em 1.5em;border:1.5px solid ${border};border-radius:999px;background:${bg};color:${text};font-family:${BODY};font-size:.95rem;font-weight:600;letter-spacing:.01em;line-height:1;text-decoration:none;overflow:hidden;isolation:isolate;transition:color .45s ${EASE};
+&::before{content:"";position:absolute;inset:0;z-index:-1;background:${fill};transform:translateX(-101%);transition:transform .55s ${EASE}}
+&::after{content:"→";display:inline-block;width:1em;height:1em;overflow:hidden;white-space:nowrap;line-height:1;text-shadow:-1.2em 0 currentColor;transition:text-indent .45s ${EASE}}
+&:hover,&:focus-visible{background:${bg};color:${hover}}
+&:hover::before,&:focus-visible::before{transform:none}
+&:hover::after,&:focus-visible::after{text-indent:1.2em}`;
+
+/** Kinetic's named looks for core blocks: picked (or removed) in each block's Styles panel. */
+export const BLOCK_STYLES: BlockStyleDef[] = [
+  S('eyebrow', 'Eyebrow (rule + caps)', ['core/paragraph'], `display:flex;align-items:center;gap:.9em;font-family:${BODY};font-size:.78rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;
+&::before{content:"";flex:none;width:2.5rem;height:1px;background:currentColor}
+@media (prefers-reduced-motion:no-preference){&{animation:kx-rise 1.1s ${EASE} .08s both}}
+@keyframes kx-rise{from{opacity:0;transform:translateY(.35em) skewY(3deg);clip-path:inset(0 0 100% 0)}to{opacity:1;transform:none;clip-path:inset(0 0 -10% 0)}}`),
+  S('display', 'Display (screen-wide, accent dot)', ['core/heading'], `margin-bottom:0;font-family:${HEADING};font-weight:800;text-transform:uppercase;line-height:.84;letter-spacing:-.055em;text-wrap:balance;font-size:clamp(2.4rem,13.2vw,16rem);overflow-wrap:normal;word-break:normal;hyphens:manual;
+&::after{content:"";display:inline-block;width:.17em;height:.17em;margin-left:.05em;border-radius:50%;background:${color('accent')};box-shadow:0 0 0 .02em ${color('contrast')};vertical-align:baseline}
+:where(.has-accent-background-color) &::after{background:${color('contrast')}}
+@media (prefers-reduced-motion:no-preference){&{animation:kx-rise 1.1s ${EASE} both}&::after{animation:kx-pulse 2.4s ${EASE} 1.1s infinite}
+@supports (animation-timeline:view()){&:not(h1){animation:kx-rise linear both;animation-timeline:view();animation-range:entry 0% cover 35%}}}
+@keyframes kx-rise{from{opacity:0;transform:translateY(.35em) skewY(3deg);clip-path:inset(0 0 100% 0)}to{opacity:1;transform:none;clip-path:inset(0 0 -10% 0)}}
+@keyframes kx-pulse{0%,100%{transform:scale(1)}50%{transform:scale(.55)}}`),
+  S('label', 'Section label (sticky)', ['core/paragraph'], `position:sticky;top:calc(var(--pp-header-h, 0px) + 1.5rem);align-self:start;display:flex;flex-direction:column;gap:.35rem;font-family:${BODY};font-size:.8rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;
+& strong{font-family:${HEADING};font-size:clamp(2.2rem,4vw,3.4rem);font-weight:800;letter-spacing:-.04em;line-height:1}`),
+  S('index-row', 'Index row (floods on hover)', ['core/group'], `position:relative;display:grid;grid-template-columns:4rem 1fr auto 4.5rem 2.5rem;align-items:center;gap:1.25rem;margin-block:0!important;padding:clamp(1rem,2.2vw,1.6rem) .75rem;border-top:1px solid currentColor;isolation:isolate;overflow:hidden;
+&:last-child{border-bottom:1px solid currentColor}
+& > p{margin:0!important}
+&::before{content:"";position:absolute;inset:0;z-index:-1;background:${color('contrast')};transform:scaleY(0);transform-origin:bottom;transition:transform .55s ${EASE}}
+&::after{content:"↗";justify-self:end;font-size:1.6rem;line-height:1;opacity:.3;transition:transform .55s ${EASE},opacity .3s}
+& > p:nth-child(1),& > p:nth-child(4){font-family:${BODY};font-size:.8rem;font-weight:600;letter-spacing:.14em;font-variant-numeric:tabular-nums}
+& > p:nth-child(2){min-width:0;margin:0 -.6rem 0 0!important;font-family:${HEADING};font-weight:800;text-transform:uppercase;letter-spacing:-.035em;line-height:.95;font-size:clamp(1.3rem,3.3vw,3.2rem);overflow-wrap:normal;word-break:normal;transition:margin .55s ${EASE}}
+& > p:nth-child(2) a{color:inherit;text-decoration:none}
+& > p:nth-child(2) a::after{content:"";position:absolute;inset:0}
+& > p:nth-child(3){font-family:${BODY};font-size:.9rem;opacity:.75}
+&:has(a:hover),&:has(a:focus-visible){color:${color('base')}}
+&:has(a:hover)::before,&:has(a:focus-visible)::before{transform:none}
+&:has(a:hover) > p:nth-child(2),&:has(a:focus-visible) > p:nth-child(2){margin:0 -1.2rem 0 .6rem!important;color:${color('accent')}}
+&:has(a:hover)::after,&:has(a:focus-visible)::after{transform:translate(.15em,-.15em) rotate(45deg);opacity:1;color:${color('accent')}}
+@media (max-width:720px){&{grid-template-columns:2.5rem 1fr 2rem}& > p:nth-child(3),& > p:nth-child(4){display:none!important}&::after{opacity:1;transform:none}}`),
+  S('stat', 'Stat (number + caption)', ['core/group'], `display:flex;flex-direction:column;gap:.75rem;
+& > p{margin:0!important}
+& > p:first-child{position:relative;padding-bottom:.18em;font-family:${HEADING};font-weight:800;font-size:clamp(3rem,6vw,6.5rem);line-height:.82;letter-spacing:-.06em;font-variant-numeric:tabular-nums;white-space:nowrap}
+& > p:first-child sup{font-size:.36em;vertical-align:top;margin-left:.04em;letter-spacing:0}
+& > p:first-child::after{content:"";position:absolute;left:0;bottom:0;width:100%;height:.09em;background:${color('accent')};transform-origin:left}
+& > p:last-child{font-family:${BODY};font-size:.82rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+@media (prefers-reduced-motion:no-preference){@supports (animation-timeline:view()){& > p:first-child::after{animation:kx-sweep linear both;animation-timeline:view();animation-range:entry 20% cover 45%}}}
+@keyframes kx-sweep{from{transform:scaleX(0)}to{transform:scaleX(1)}}`),
+  // Fitted to a seven-letter word (KINETIC), like the old SVG's textLength; a longer word needs a smaller font size.
+  S('wordmark', 'Wordmark (condensed, edge to edge)', ['core/group'], `container-type:inline-size;overflow:hidden;
+& > p{margin:0;font-family:${HEADING};font-weight:800;font-size:22.3cqi;line-height:.9;letter-spacing:-.026em;text-transform:uppercase;white-space:nowrap;scale:.665 1;transform-origin:0 50%}
+@media (prefers-reduced-motion:no-preference){@supports (animation-timeline:view()){& > p{animation:kx-wordmark linear both;animation-timeline:view();animation-range:entry 0% cover 40%}}}
+@keyframes kx-wordmark{from{transform:translateY(40%);opacity:.2}to{transform:none;opacity:1}}`),
+  S('case', 'Case picture (acid frame on hover)', ['core/image'], `& img{display:block;width:100%;height:auto;transition:outline-offset .25s,outline-color .25s;outline:.5rem solid transparent;outline-offset:0}
+& a:hover img,& a:focus-visible img{outline-color:${color('accent')};outline-offset:-.5rem}
+& figcaption{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.25rem 1rem;margin-top:.9rem;font-size:var(--wp--preset--font-size--small);font-weight:600;letter-spacing:.1em;text-transform:uppercase;text-align:left}
+& figcaption strong{font-family:${HEADING};font-size:1.35rem;font-weight:800;letter-spacing:-.02em}`),
+  S('pill', 'Pill (ink, floods acid)', ['core/button'], PILL(color('contrast'), color('base'), color('accent'), color('contrast'))),
+  S('pill-acid', 'Pill (acid, floods ink)', ['core/button'], PILL(color('accent'), color('contrast'), color('contrast'), color('accent'))),
+  S('pill-outline', 'Pill (outline)', ['core/button'], PILL('transparent', 'inherit', color('contrast'), color('accent'), 'currentColor')),
+  S('header-cta', 'Hidden on phones', ['core/buttons'], '@media (max-width:640px){&{display:none!important}}'),
+];
 
 export const STYLE = {
   key: 'style',

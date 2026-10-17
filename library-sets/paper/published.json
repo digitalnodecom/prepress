@@ -1,12 +1,5 @@
 {
   "style": "e8knv9csr0",
-  "block:paper-masthead": "m9nkrkewqb",
-  "block:paper-lede": "uiea00pz64",
-  "block:paper-pullquote": "ln9iytmool",
-  "block:paper-note": "3wdva0hp3m",
-  "block:paper-byline": "a4ejmdtonk",
-  "block:paper-ornament": "5f1zeeqwf7",
-  "block:paper-index-row": "almj790avi",
   "block:paper-engraving": "qfhjf0elsv",
   "pattern:front-page": "y63rxfmrze",
   "pattern:contents": "2fhrfldn3w",
@@ -19,5 +12,6 @@
   "pattern:about": "xbtngcno3x",
   "pattern:page-title": "hezulpmebr",
   "template": "zi4wwurgev",
-  "pattern:plate": "2ox8qhm1r4"
+  "pattern:plate": "2ox8qhm1r4",
+  "pattern:questions": "qx0fws0ol4"
 }

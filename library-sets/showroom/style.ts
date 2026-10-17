@@ -2,9 +2,10 @@
  * Showroom — style: a white gallery for product launches. Pure white and a
  * cool mist for bands, near-black ink, one blue for links and compact pills,
  * a burnt-orange accent kept for tiny "New" labels. Inter throughout, set
- * tight; 28px rounded media, no shadows, no gradients in the interface.
+ * tight; rounded media (the large radius), no shadows, no gradients in the interface.
  */
-import type { Design } from '../../src/lib/types';
+import type { BlockStyleDef, Design } from '../../src/lib/types';
+import { blockStyle, color, font, radius } from '../kit';
 
 export const DESIGN: Design = {
   palette: {
@@ -57,6 +58,8 @@ export const THEME_JSON = {
       'h1,h2,h3{text-wrap:balance}',
       // The global nav is a thin 49px bar: a sticky header (if switched on) is that tall.
       ':root{--pp-header-size:49px}',
+      // The header part sticks with the global nav scrolled out of view, so the product bar under it stays at the top.
+      '.wp-site-blocks>header.wp-block-template-part{position:sticky;top:calc(-1 * var(--pp-header-size));z-index:20}',
       '.wp-block-columns>.wp-block-column>.wp-block-group.has-background:only-child{height:100%;box-sizing:border-box}',
       'p{text-wrap:pretty}',
       'a:where(:not(.wp-element-button)){text-decoration:none}',
@@ -67,28 +70,78 @@ export const THEME_JSON = {
       '.wp-block-button.is-style-outline>.wp-block-button__link:not(.has-text-color){color:var(--wp--preset--color--primary)}',
       '.wp-block-button.is-style-outline>.wp-block-button__link:hover{filter:none;background:var(--wp--preset--color--primary);color:var(--wp--preset--color--base)}',
       '::selection{background:color-mix(in srgb,var(--wp--preset--color--primary) 22%,transparent)}',
-      ':where(a,button,summary,[tabindex]):focus-visible{outline:2px solid var(--wp--preset--color--primary);outline-offset:3px;border-radius:6px}',
+      ':where(a,button,summary,[tabindex]):focus-visible{outline:2px solid var(--wp--preset--color--primary);outline-offset:3px;border-radius:var(--wp--custom--radius--sm)}',
       '.wp-block-separator{border:0;border-top:1px solid var(--wp--preset--color--secondary);opacity:1}',
-      '.sr-fine{color:color-mix(in srgb,var(--wp--preset--color--contrast) 62%,var(--wp--preset--color--base))}',
-      '.sr-fine a{color:var(--wp--preset--color--primary)}',
       '@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}',
       'html{scroll-behavior:smooth}',
-      // Photos: rounded like the cards; the film still keeps its text white; the reel scrolls sideways and snaps.
-      '.sr-rounded img{border-radius:28px}',
-      '.sr-film{color:var(--wp--preset--color--base)}',
-      '.sr-film .wp-block-cover__background{background:linear-gradient(to top,rgb(0 0 0/.65),transparent 55%)!important;opacity:1!important}',
-      '.sr-reel{gap:1.25rem!important;overflow-x:auto;scroll-snap-type:x mandatory;padding:0 max(1.5rem,calc((100vw - var(--wp--style--global--wide-size,1200px))/2)) 1rem;scrollbar-width:none;-webkit-overflow-scrolling:touch}',
-      '.sr-reel::-webkit-scrollbar{display:none}',
-      '.sr-reel>.wp-block-image{flex:0 0 min(78vw,26rem);margin:0;scroll-snap-align:center}',
-      '.sr-reel img{width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:28px}',
-      '.sr-reel figcaption{margin-top:.75rem;font-size:var(--wp--preset--font-size--small);font-weight:600;color:color-mix(in srgb,currentColor 60%,transparent);text-align:left}',
     ].join('\n'),
   },
 };
 
+const BODY = font('body');
+const FINE = `color-mix(in srgb,${color('contrast')} 62%,${color('base')})`;
+const PILL_HOVER = `color-mix(in srgb,${color('primary')} 86%,white)`;
+const S = (slug: string, label: string, types: string[], css: string) => blockStyle('showroom', slug, label, types, { css });
+
+/** Showroom's named looks for core blocks: picked (or removed) in each block's Styles panel. */
+export const BLOCK_STYLES: BlockStyleDef[] = [
+  // Fine print: muted text, blue links (footnotes, the footer).
+  S('fine', 'Fine print', ['core/paragraph', 'core/navigation'], `color:${FINE};
+& a{color:${color('primary')}}`),
+  // A compact blue pill (pricing capsule, product bar).
+  S('pill', 'Compact pill', ['core/button'], `padding:.55em 1.15em;font-family:${BODY};font-size:.8rem;letter-spacing:-.01em;white-space:nowrap;
+&:hover{background:${PILL_HOVER};filter:none}`),
+  // The floating pricing capsule: price and a line of financing, then a pill; a hairline, no shadow.
+  S('capsule', 'Pricing capsule', ['core/group'], `width:fit-content;gap:.6rem 1.4rem;padding:.75rem .8rem .75rem 1.6rem;border-radius:${radius('lg')};box-shadow:0 0 0 1px ${color('secondary')};
+& p{margin:0;font-family:${BODY};font-size:.875rem;line-height:1.3;letter-spacing:-.016em;color:${FINE}}
+& p strong{font-weight:600;color:${color('contrast')}}`),
+  // The product's own bar: frosted, a hairline below; it stays at the top while the page scrolls.
+  S('product-bar', 'Product bar', ['core/group'], `position:sticky;top:var(--pp-header-h, 0px);z-index:20;margin-block:0!important;background:color-mix(in srgb,${color('base')} 78%,transparent);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border-bottom:1px solid ${color('secondary')};
+& > .wp-block-group{gap:1rem}
+& > .wp-block-group > p:first-child{font-family:${font('heading')};font-weight:600;font-size:1.2rem;letter-spacing:.012em}
+& > .wp-block-group > p:first-child a{color:inherit;text-decoration:none}
+& .wp-block-group .wp-block-group{gap:1.5rem}
+& .wp-block-group .wp-block-group > p{font-family:${BODY};font-size:.75rem;letter-spacing:-.01em}
+& .wp-block-group .wp-block-group > p a{color:color-mix(in srgb,${color('contrast')} 80%,${color('base')});text-decoration:none}
+& .wp-block-group .wp-block-group > p a:hover{color:${color('primary')}}
+& .wp-block-button .wp-block-button__link{padding:.45em 1em;font-size:.75rem}
+@media (max-width:640px){& .wp-block-group .wp-block-group > p{display:none}}`),
+  // In-page chapter links: a quiet centred row.
+  S('chapters', 'Chapter links', ['core/list'], `display:flex;flex-wrap:wrap;justify-content:center;gap:.5rem 2.6rem;padding:1.75rem 0;list-style:none;
+& li{margin:0}
+& a{font-family:${BODY};font-weight:500;font-size:1.0625rem;line-height:1.47;letter-spacing:-.022em;color:inherit;text-decoration:none}
+& a:hover{color:${color('primary')};text-decoration:none}`),
+  // One headline number from the tech specs: figure (unit in <small>), label, note.
+  S('spec', 'Spec figure', ['core/group'], `padding-top:1.1rem;border-top:1px solid ${color('secondary')};
+& p{margin:0}
+& > p:first-child{font-family:${font('heading')};font-weight:600;font-size:clamp(2.5rem,5vw,3.5rem);line-height:1;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+& > p:first-child small{font-size:.5em;font-weight:500;letter-spacing:0;margin-left:.08em}
+& > p:nth-child(2){margin-top:.55rem;font-family:${BODY};font-weight:600;font-size:1.0625rem;letter-spacing:-.022em}
+& > p:nth-child(3){margin-top:.2rem;font-family:${BODY};font-size:.875rem;letter-spacing:-.016em;color:${FINE}}`),
+  // Finish swatches: dark, light, brand and accent, mixed from the palette; the first is shown selected.
+  S('finishes', 'Finish swatches', ['core/list'], `display:flex;flex-wrap:wrap;justify-content:center;gap:1.4rem 2.2rem;padding:0;list-style:none;
+& li{display:flex;flex-direction:column;align-items:center;gap:.7rem;margin:0;font-family:${BODY};font-size:.875rem;letter-spacing:-.016em}
+& li::before{content:"";display:block;width:2.6rem;aspect-ratio:1;border-radius:50%;box-shadow:inset 0 0 0 1px color-mix(in srgb,${color('contrast')} 18%,transparent)}
+& li:first-child::before{outline:2px solid ${color('primary')};outline-offset:3px}
+& li:nth-child(4n+1)::before{background:linear-gradient(145deg,color-mix(in srgb,${color('contrast')} 80%,${color('base')}),color-mix(in srgb,${color('contrast')} 96%,black))}
+& li:nth-child(4n+2)::before{background:linear-gradient(145deg,${color('base')},color-mix(in srgb,${color('contrast')} 16%,${color('base')}))}
+& li:nth-child(4n+3)::before{background:linear-gradient(145deg,color-mix(in srgb,${color('primary')} 60%,${color('contrast')}),color-mix(in srgb,${color('primary')} 35%,${color('contrast')}))}
+& li:nth-child(4n)::before{background:linear-gradient(145deg,color-mix(in srgb,${color('accent')} 60%,${color('base')}),${color('accent')})}`),
+  // Photos rounded like the cards.
+  S('rounded', 'Rounded like the cards', ['core/image'], `& img{border-radius:${radius('lg')}}`),
+  // The film still: white type over a dark fade at the foot of the photo.
+  S('film', 'Film still', ['core/cover'], `color:${color('base')}`),
+  // A full-width reel of portrait shots that scrolls sideways and snaps.
+  S('reel', 'Sideways reel', ['core/group'], `gap:1.25rem!important;overflow-x:auto;scroll-snap-type:x mandatory;padding:0 max(1.5rem,calc((100vw - var(--wp--style--global--wide-size,1200px))/2)) 1rem;scrollbar-width:none;-webkit-overflow-scrolling:touch;
+&::-webkit-scrollbar{display:none}
+& > .wp-block-image{flex:0 0 min(78vw,26rem);margin:0;scroll-snap-align:center}
+& img{width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:${radius('lg')}}
+& figcaption{margin-top:.75rem;font-size:var(--wp--preset--font-size--small);font-weight:600;color:color-mix(in srgb,currentColor 60%,transparent);text-align:left}`),
+];
+
 export const STYLE = {
   key: 'style',
   title: 'Showroom',
-  description: 'Product-launch style: a white gallery with mist-grey bands, near-black type set tight in Inter, one blue for links and compact pills, 28px rounded media and no shadows.',
+  description: 'Product-launch style: a white gallery with mist-grey bands, near-black type set tight in Inter, one blue for links and compact pills, rounded media and no shadows.',
   tags: ['product', 'minimal', 'launch', 'tech'],
 };

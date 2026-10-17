@@ -185,7 +185,7 @@ The project started from a brainstorm with the owner. These decisions were made 
 | How the AI produces content | The model returns **JSON block trees or pattern calls**, never HTML | Gutenberg validates saved HTML against each block's `save()` output. LLM-written HTML triggers "This block contains unexpected or invalid content". Serializing with Gutenberg's own `serialize()` makes output valid by construction. |
 | Layout quality | A curated **pattern library** the AI picks from and fills | LLMs make mediocre layouts from raw columns/groups but are good at choosing and filling good patterns. |
 | Styling | Design tokens in `theme.json`; blocks reference **preset slugs** (`backgroundColor: "primary"`) | A global restyle is one theme.json edit, here and later in the WordPress Site Editor. |
-| Block set | **Core blocks only** | Guarantees the export works on any vanilla WordPress install with no plugin. |
+| Block set | **Core blocks first; block styles for looks; custom `prepress/*` blocks only for art, interactive or effect wrappers** (`docs/THEME-SYSTEM.md`) | Content stays editable core blocks in any WordPress; looks are `is-style-*` the user can switch off; custom blocks ship in the theme or a companion plugin (export choice). |
 | WordPress version | **Pinned to 7.0** | Block markup and attributes change between releases (e.g. 7.0 moved heading/paragraph `textAlign` into `style.typography.textAlign`). Pinning makes output match one editor exactly. |
 
 ## 3. Current status
@@ -328,7 +328,7 @@ These are also in `CLAUDE.md` / `AGENTS.md`. Breaking any of them will eventuall
 2. Never hand-write block markup, including templates. Build `BlockNode` trees and call `toMarkup()` (after `normalize*` for anything that came from the AI).
 3. `npm test` must stay green. Add a test when you add a pattern, block, or export file.
 4. Colors, font sizes and spacing use preset slugs/`var:preset|…` values, never raw values.
-5. Core blocks only in content. Adding a custom block means shipping a plugin with the export; ask the owner first.
+5. Follow `docs/THEME-SYSTEM.md`: core blocks + block styles first; a custom block only for art, interactive or effect wrappers (`kind`), whose text is inner blocks.
 6. All `@wordpress/*` packages are pinned through `overrides` in `package.json` to their `wp-7.0` dist-tag versions, and the four direct dependencies use the exact same versions (otherwise npm fails with `EOVERRIDE`). To move to a new WordPress version: get each package's `wp-X.Y` version with `npm view <pkg>@wp-X.Y version`, update overrides and direct deps, run tests, look for attribute moves, update `TARGET_WP_VERSION`.
 7. Treat AI output as untrusted input: drop and report unknown blocks/attributes, never pass them through.
 

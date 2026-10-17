@@ -66,6 +66,8 @@ export interface Site {
   blocks?: CustomBlockDef[];
   /** Reusable sections: unsynced → inserter/theme patterns; synced → `core/block` refs. */
   patterns?: PatternDef[];
+  /** Named looks for core/custom blocks (`is-style-<name>`), picked in the block's Styles panel. */
+  blockStyles?: BlockStyleDef[];
   /** Deep-merged over the theme.json generated from `design` (arrays replace). */
   themeJson?: ThemeJsonPatch;
 }
@@ -99,9 +101,40 @@ export interface CustomBlockDef {
   template: string;
   /** CSS for this block. Prefer preset variables, e.g. var(--wp--preset--color--primary). */
   css?: string;
+  /**
+   * Why this is a custom block and not core blocks + a block style:
+   * `art` (generated SVG/drawing), `interactive` (CSS state with inputs) or
+   * `effect` (motion around content; its text must be inner blocks via {{{content}}}).
+   */
+  kind?: 'art' | 'interactive' | 'effect';
   /** Inner blocks settings, used when the template contains {{{content}}}. */
   innerBlocks?: { allowed?: string[]; template?: BlockNode[] };
 }
+
+/**
+ * A block style (WordPress "block style variation"): a named look the user picks
+ * in a block's Styles panel, stored as the class `is-style-<name>`. Without it the
+ * block is still a plain, valid block. Exported via register_block_style().
+ */
+export interface BlockStyleDef {
+  /** `<set>-<slug>` for library sets; the class is `is-style-<name>`. */
+  name: string;
+  label: string;
+  /** Block types it applies to, e.g. ["core/image"]. */
+  blockTypes: string[];
+  /** theme.json-shaped root styles (color, typography, spacing, border, shadow, dimensions). */
+  styles?: Record<string, unknown>;
+  /**
+   * CSS for what JSON can't say. Bare declarations apply to the block; `& img {…}`
+   * nests under it; `@media` / `@supports` may wrap either.
+   */
+  css?: string;
+}
+
+/** What a pattern is for; maps to WordPress pattern categories on export. */
+export type PatternRole =
+  | 'hero' | 'page-title' | 'article' | 'intro' | 'story' | 'features' | 'showcase' | 'gallery' | 'list' | 'menu'
+  | 'pricing' | 'stats' | 'testimonial' | 'faq' | 'cta' | 'contact' | 'header' | 'footer';
 
 export interface PatternDef {
   /** Stable numeric id; synced patterns are referenced as <!-- wp:block {"ref":id} /-->. */
@@ -113,6 +146,8 @@ export interface PatternDef {
   content: string;
   synced: boolean;
   categories?: string[];
+  role?: PatternRole;
+  keywords?: string[];
 }
 
 export type PartSlug = 'header' | 'footer';

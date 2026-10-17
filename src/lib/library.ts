@@ -13,12 +13,13 @@
  * cleanThemeJsonPatch.
  */
 import { parse, serialize } from '@wordpress/blocks';
-import type { CustomBlockDef, Design, Page, PatternDef, Site } from './types';
+import type { BlockStyleDef, CustomBlockDef, Design, Page, PatternDef, PatternRole, Site } from './types';
 import { applyDesign, blockUsage, createPattern, defineBlock, getSections, insertSection, patchThemeJson, rebuildParts, uid } from './site';
 import { markupToNodes, toMarkup, validateMarkup } from './wp/markup';
 import { normalizeSections, PART_BLOCKS } from './wp/normalize';
 import { cleanThemeJsonPatch, sanitizeDesign } from './wp/design';
 import { cleanBlockDef, registerCustomBlocks } from './wp/customBlocks';
+import { blockStylesUsedIn, cleanBlockStyle, upsertBlockStyles } from './wp/blockStyles';
 import { renderPage } from './wp/render';
 import { placeholderImage } from './wp/placeholders';
 import { mediaAttrs } from './wp/media';
@@ -30,9 +31,9 @@ export const LIBRARY_TYPES: LibraryType[] = ['template', 'pattern', 'block', 'st
 
 export interface LibraryPayload {
   template?: { site: Site; brief?: string };
-  pattern?: { title: string; description?: string; content: string; blocks: CustomBlockDef[] };
+  pattern?: { title: string; description?: string; content: string; blocks: CustomBlockDef[]; blockStyles?: BlockStyleDef[] };
   block?: { block: CustomBlockDef };
-  style?: { design: Design; themeJson?: Record<string, unknown> };
+  style?: { design: Design; themeJson?: Record<string, unknown>; blockStyles?: BlockStyleDef[] };
 }
 
 /** What Prepress sends to the library. */
@@ -137,13 +138,14 @@ export function sharePattern(site: Site, patternId: number, meta: { title?: stri
 function sharePatternContent(site: Site, markup: string, meta: { title: string; description?: string; tags?: string[] }): LibraryDraft {
   const content = withoutLocalMedia(markup, site.design, site.blocks);
   const blocks = blocksUsedIn(content, site);
+  const blockStyles = blockStylesUsedIn(content, site.blockStyles);
   return {
     type: 'pattern',
     title: clean(meta.title, 80),
     description: clean(meta.description, 400),
     tags: cleanTags(meta.tags),
-    payload: { pattern: { title: clean(meta.title, 80), description: clean(meta.description, 400) || undefined, content, blocks } },
-    preview: previewOf({ ...site, blocks, header: '', footer: '' }, content),
+    payload: { pattern: { title: clean(meta.title, 80), description: clean(meta.description, 400) || undefined, content, blocks, ...(blockStyles.length ? { blockStyles } : {}) } },
+    preview: previewOf({ ...site, blocks, blockStyles, header: '', footer: '' }, content),
   };
 }
 
@@ -166,18 +168,33 @@ export function shareBlock(site: Site, name: string, meta: { description?: strin
 export function shareStyle(site: Site, meta: { title: string; description?: string; tags?: string[] }): LibraryDraft {
   // Shown on a neutral sample page so people judge the style, not the content.
   const sample = buildStarter('saas', { name: 'Sample' }).site;
-  const styled = rebuildParts({ ...applyDesign(sample, site.design), themeJson: site.themeJson });
+  const styled = rebuildParts({ ...applyDesign(sample, site.design), themeJson: site.themeJson, blockStyles: site.blockStyles });
   return {
     type: 'style',
     title: clean(meta.title, 80),
     description: clean(meta.description, 400),
     tags: cleanTags(meta.tags),
-    payload: { style: { design: site.design, ...(site.themeJson ? { themeJson: site.themeJson as Record<string, unknown> } : {}) } },
+    payload: { style: { design: site.design, ...(site.themeJson ? { themeJson: site.themeJson as Record<string, unknown> } : {}), ...(site.blockStyles?.length ? { blockStyles: site.blockStyles } : {}) } },
     preview: renderPage(styled, styled.pages[0]),
   };
 }
 
 // ---------- importing (untrusted) ----------
+
+const ROLES = new Set<PatternRole>(['hero', 'page-title', 'article', 'intro', 'story', 'features', 'showcase', 'gallery', 'list', 'menu', 'pricing', 'stats', 'testimonial', 'faq', 'cta', 'contact', 'header', 'footer']);
+
+/** Untrusted block styles → cleaned ones; broken definitions are dropped (their blocks fall back to plain). */
+function cleanStyles(list: unknown): BlockStyleDef[] {
+  const out: BlockStyleDef[] = [];
+  for (const d of (Array.isArray(list) ? list : []).slice(0, 100)) {
+    try {
+      out.push(cleanBlockStyle(d));
+    } catch {
+      /* dropped */
+    }
+  }
+  return upsertBlockStyles([], out);
+}
 
 /** Untrusted markup → allowed blocks and attributes only, re-serialized by WordPress. */
 function cleanMarkup(markup: unknown, design: Design, allowed?: readonly string[], customNames: string[] = []): string {
@@ -216,6 +233,9 @@ export function importLibraryItem(site: Site, item: Pick<LibraryItem, 'type' | '
     if (!p.style?.design) throw new Error('This library item has no style');
     let next = applyDesign(site, sanitizeDesign(p.style.design));
     if (p.style.themeJson) next = patchThemeJson({ ...next, themeJson: undefined }, cleanThemeJsonPatch(p.style.themeJson));
+    // A style brings its block styles; looks from the previous style go (their blocks fall back to plain).
+    next = { ...next, blockStyles: cleanStyles(p.style.blockStyles) };
+    if (!next.blockStyles!.length) delete next.blockStyles;
     return { site: rebuildParts(next), summary: `Applied the style “${item.title}”` };
   }
 
@@ -230,6 +250,8 @@ export function importLibraryItem(site: Site, item: Pick<LibraryItem, 'type' | '
         /* a broken block definition is dropped; its uses are dropped by the normalizer below */
       }
     }
+    const styles = cleanStyles(pat.blockStyles);
+    if (styles.length) next = { ...next, blockStyles: upsertBlockStyles(next.blockStyles, styles) };
     registerCustomBlocks(next.blocks ?? []);
     const content = cleanMarkup(pat.content, next.design, undefined, (next.blocks ?? []).map((b) => b.name));
     if (!content) throw new Error('The pattern is empty after cleaning');
@@ -273,7 +295,12 @@ export function importLibraryItem(site: Site, item: Pick<LibraryItem, 'type' | '
     title: clean(pt.title, 80),
     content: cleanMarkup(pt.content, design, undefined, names),
     synced: !!pt.synced,
+    ...(pt.description ? { description: clean(pt.description, 400) } : {}),
+    ...(Array.isArray(pt.categories) ? { categories: pt.categories.map((c) => clean(c, 30)).filter(Boolean).slice(0, 5) } : {}),
+    ...(typeof pt.role === 'string' && ROLES.has(pt.role) ? { role: pt.role } : {}),
+    ...(Array.isArray(pt.keywords) ? { keywords: pt.keywords.map((k) => clean(k, 24)).filter(Boolean).slice(0, 8) } : {}),
   }));
+  const blockStyles = cleanStyles(t.blockStyles);
   let next: Site = {
     name: clean(t.name, 80) || item.title,
     tagline: clean(t.tagline, 160),
@@ -284,6 +311,7 @@ export function importLibraryItem(site: Site, item: Pick<LibraryItem, 'type' | '
     custom: { header: !!t.custom?.header, footer: !!t.custom?.footer },
     ...(blocks.length ? { blocks } : {}),
     ...(patterns.length ? { patterns } : {}),
+    ...(blockStyles.length ? { blockStyles } : {}),
   };
   if (t.themeJson) next = patchThemeJson(next, cleanThemeJsonPatch(t.themeJson));
   // Parts the author hadn't customised are regenerated for this site's pages.

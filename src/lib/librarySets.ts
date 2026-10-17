@@ -5,22 +5,27 @@
  * the lineage between them (`uses`, by item key), using the same normalize →
  * serialize path and share builders as everything else.
  */
-import type { BlockNode, CustomBlockDef, Design, PatternDef, Site } from './types';
+import type { BlockNode, BlockStyleDef, CustomBlockDef, Design, PatternDef, PatternRole, Site } from './types';
 import { patchThemeJson, uid } from './site';
 import { normalizeSections, PART_BLOCKS, type NormalizeReport } from './wp/normalize';
 import { toMarkup } from './wp/markup';
 import { sanitizeDesign } from './wp/design';
 import { cleanBlockDef, registerCustomBlocks } from './wp/customBlocks';
+import { cleanBlockStyle } from './wp/blockStyles';
 import { ensureBlocks } from './wp/registry';
 import { sharePattern, shareBlock, shareStyle, shareTemplate, type LibraryDraft } from './library';
 
 export interface LibrarySetDef {
   key: string;
+  /** Class prefix for the set's own CSS classes inside block templates (e.g. "kx" → .kx-*). */
+  prefix: string;
   /** A blocks-only collection publishes just its blocks; the style and `showcase` pages only dress the previews. */
   blocksOnly?: boolean;
   style: { key: string; title: string; description: string; tags: string[]; design: Design; themeJson: Record<string, unknown> };
   blocks: CustomBlockDef[];
-  patterns: { key: string; title: string; description: string; tags: string[]; sections: BlockNode[] }[];
+  /** The style's block styles (`is-style-<set>-*`): named looks for core blocks, part of the style layer. */
+  blockStyles?: BlockStyleDef[];
+  patterns: { key: string; title: string; description: string; tags: string[]; role: PatternRole; sections: BlockNode[] }[];
   header: BlockNode[];
   footer: BlockNode[];
   /** Blocks-only sets: one section per block, used as that block's library preview. */
@@ -67,7 +72,7 @@ export function buildLibrarySet(set: LibrarySetDef): BuiltSet {
   };
 
   const patternMarkup = new Map(set.patterns.map((p) => [p.key, markup(p.sections)]));
-  const patterns: PatternDef[] = set.patterns.map((p, i) => ({ id: 5000 + i, slug: p.key, title: p.title, description: p.description, content: patternMarkup.get(p.key)!, synced: false, categories: [set.key] }));
+  const patterns: PatternDef[] = set.patterns.map((p, i) => ({ id: 5000 + i, slug: p.key, title: p.title, description: p.description, content: patternMarkup.get(p.key)!, synced: false, categories: [set.key], role: p.role, keywords: p.tags }));
   const pageSpecs = set.blocksOnly ? [{ title: 'Showcase', slug: 'home', sections: set.showcase ?? [] }] : set.template.pages;
   const pages = pageSpecs.map((pg) => ({
     id: uid(),
@@ -93,6 +98,7 @@ export function buildLibrarySet(set: LibrarySetDef): BuiltSet {
     custom: { header: true, footer: true },
     blocks,
     patterns,
+    ...(set.blockStyles?.length ? { blockStyles: set.blockStyles.map((d) => cleanBlockStyle(d)) } : {}),
   };
   site = patchThemeJson(site, set.style.themeJson);
 
