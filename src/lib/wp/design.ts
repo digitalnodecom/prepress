@@ -34,6 +34,7 @@ export const FONTS: Record<string, FontDef> = {
   cormorant: { name: 'Cormorant Garamond', stack: '"Cormorant Garamond", Garamond, Georgia, serif', google: 'Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500' },
   'bebas-neue': { name: 'Bebas Neue', stack: '"Bebas Neue", "Arial Narrow", Impact, sans-serif', google: 'Bebas+Neue' },
   'eb-garamond': { name: 'EB Garamond', stack: '"EB Garamond", Garamond, Georgia, serif', google: 'EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500' },
+  'hanken-grotesk': { name: 'Hanken Grotesk', stack: '"Hanken Grotesk", system-ui, sans-serif', google: 'Hanken+Grotesk:ital,wght@0,400;0,500;0,700;1,400' },
   bricolage: { name: 'Bricolage Grotesque', stack: '"Bricolage Grotesque", system-ui, sans-serif', google: 'Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600' },
   'instrument-serif': { name: 'Instrument Serif', stack: '"Instrument Serif", Georgia, serif', google: 'Instrument+Serif' },
   system: { name: 'System Sans', stack: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' },

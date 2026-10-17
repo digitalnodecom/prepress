@@ -18,6 +18,7 @@ const EXPECT: Record<keyof typeof SETS, { pages: string[]; headerBlock: string; 
   fx: { pages: ['home'], headerBlock: '', preview: { item: 'block:fx-starfield', contains: ['fx-stars', '@media (prefers-reduced-motion:no-preference)'] } },
   hut: { pages: ['home'], headerBlock: 'is-style-hut-header', preview: { item: 'pattern:hero', contains: ['is-style-hut-passport', 'hp-stampbox', 'Bebas+Neue', 'EB+Garamond'] } },
   chorus: { pages: ['home'], headerBlock: 'is-style-chorus-header', preview: { item: 'pattern:hero', contains: ['ch-hero', 'data-ui', 'Bricolage+Grotesque'] } },
+  programme: { pages: ['home', 'programme', 'speakers', 'tickets', 'visit'], headerBlock: 'is-style-programme-header', preview: { item: 'pattern:hero', contains: ['is-style-programme-pinned', 'Hanken+Grotesk', 'color-scheme:dark'] } },
   paper: { pages: ['home', 'essays', 'on-slow-software', 'about', 'subscribe'], headerBlock: 'is-style-paper-desktop-only', preview: { item: 'pattern:essay', contains: ['is-style-paper-lede', 'p.is-style-paper-lede::first-letter{', 'is-style-paper-sidenote', '--wp--preset--font-family--mono', 'IBM+Plex+Mono', 'Newsreader'] } },
 };
 

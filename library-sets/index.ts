@@ -6,6 +6,7 @@ import { SHOWROOM } from './showroom';
 import { FX } from './fx';
 import { HUT } from './hut';
 import { CHORUS } from './chorus';
+import { PROGRAMME } from './programme';
 
-export const SETS = { kinetic: KINETIC, paper: PAPER, garden: GARDEN, showroom: SHOWROOM, fx: FX, hut: HUT, chorus: CHORUS } as const;
+export const SETS = { kinetic: KINETIC, paper: PAPER, garden: GARDEN, showroom: SHOWROOM, fx: FX, hut: HUT, chorus: CHORUS, programme: PROGRAMME } as const;
 export type SetKey = keyof typeof SETS;
