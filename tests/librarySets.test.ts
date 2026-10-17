@@ -13,6 +13,10 @@ import { contrastRatio, sanitizeDesign, textOn } from '../src/lib/wp/design';
 const EXPECT: Record<keyof typeof SETS, { pages: string[]; headerBlock: string; preview: { item: string; contains: string[] } }> = {
   kinetic: { pages: ['home', 'work', 'studio', 'contact'], headerBlock: 'wp:prepress/kinetic-pill', preview: { item: 'pattern:hero', contains: ['kx-marquee', '--wp--preset--font-size--mega', 'Syne'] } },
   garden: { pages: ['home', 'menu', 'evenings', 'visit', 'private-dining'], headerBlock: 'ng-header-cta', preview: { item: 'pattern:hero', contains: ['ng-glow', 'ng-arch', 'Cormorant+Garamond', 'DM+Mono', 'color-scheme:dark'] } },
+  showroom: { pages: ['home', 'design', 'specs', 'buy'], headerBlock: 'wp:navigation', preview: { item: 'pattern:hero', contains: ['sr-fold', 'sr-price', '--wp--preset--font-size--hero', 'Inter'] } },
+  fx: { pages: ['home'], headerBlock: '', preview: { item: 'block:fx-starfield', contains: ['fx-stars', '@media (prefers-reduced-motion:no-preference)'] } },
+  hut: { pages: ['home'], headerBlock: 'hp-header', preview: { item: 'pattern:hero', contains: ['hp-pass', 'Bebas+Neue', 'EB+Garamond'] } },
+  chorus: { pages: ['home'], headerBlock: 'ch-header', preview: { item: 'pattern:hero', contains: ['ch-hero', 'data-ui', 'Bricolage+Grotesque'] } },
   paper: { pages: ['home', 'essays', 'on-slow-software', 'about', 'subscribe'], headerBlock: 'pe-header-cta', preview: { item: 'pattern:essay', contains: ['pe-lede', 'pe-note', '--wp--preset--font-family--mono', 'IBM+Plex+Mono', 'Newsreader'] } },
 };
 
@@ -28,6 +32,13 @@ for (const [key, set] of Object.entries(SETS) as [keyof typeof SETS, (typeof SET
     });
 
     test('every block is used by a pattern, every pattern by the template', () => {
+      if ((set as any).blocksOnly) {
+        // A blocks-only collection publishes exactly its blocks, each shown in its own showcase section.
+        expect(built.items.map((i) => i.draft.type)).toEqual(set.blocks.map(() => 'block'));
+        for (const bl of set.blocks) expect(built.site.pages[0].content, bl.name).toContain(`wp:${bl.name}`);
+        for (const i of built.items) expect(i.draft.preview, i.key).toContain(`wp-block-prepress-${i.key.slice(6)}`);
+        return;
+      }
       const blockKeys = built.items.filter((i) => i.key.startsWith('block:')).map((i) => i.key);
       const patternUses = new Set(built.items.filter((i) => i.key.startsWith('pattern:')).flatMap((i) => i.uses));
       const partsMarkup = built.site.header + built.site.footer;

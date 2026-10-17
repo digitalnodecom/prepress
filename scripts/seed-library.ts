@@ -93,4 +93,4 @@ for (const item of built.items) {
   const m = await post(`/items/${id}/moderate`, { admin, action: 'official' });
   if (m.status !== 200) throw new Error(`official ${item.key}: ${m.status} ${m.data.error ?? ''}`);
 }
-console.log(`\n${built.items.length} items. Template: ${api}/library/${state.template}`);
+console.log(`\n${built.items.length} items.${state.template ? ` Template: ${api}/library/${state.template}` : ` Blocks: ${api}/library?type=block&q=${setName}`}`);

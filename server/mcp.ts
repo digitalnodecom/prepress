@@ -368,8 +368,8 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
 
     tool(
       'set_design',
-      'Change design tokens: palette (base, contrast, primary, secondary, accent, muted as hex), headingFont/bodyFont (see get_block_catalog.fonts), monoFont (get_block_catalog.monoFonts; preset font family "mono" for datelines, numbers, code), radius (none|soft|round), contentSize/wideSize. Restyles all content.',
-      { palette: z.record(z.string(), z.string()).optional(), headingFont: z.string().optional(), bodyFont: z.string().optional(), monoFont: z.string().optional(), radius: z.enum(['none', 'soft', 'round']).optional(), contentSize: z.string().optional(), wideSize: z.string().optional() },
+      'Change design tokens: palette (base, contrast, primary, secondary, accent, muted as hex), headingFont/bodyFont (see get_block_catalog.fonts), monoFont (get_block_catalog.monoFonts; preset font family "mono" for datelines, numbers, code), radius (none|soft|round), stickyHeader (true pins the header to the top while scrolling), contentSize/wideSize. Restyles all content.',
+      { palette: z.record(z.string(), z.string()).optional(), headingFont: z.string().optional(), bodyFont: z.string().optional(), monoFont: z.string().optional(), radius: z.enum(['none', 'soft', 'round']).optional(), stickyHeader: z.boolean().optional(), contentSize: z.string().optional(), wideSize: z.string().optional() },
       (args) =>
         change('Changed the design', (site) => {
           const d = e.sanitizeDesign({ ...site.design, ...args, palette: { ...site.design.palette, ...(args.palette ?? {}) } });

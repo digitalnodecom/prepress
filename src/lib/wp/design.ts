@@ -31,6 +31,9 @@ export const FONTS: Record<string, FontDef> = {
   lora: { name: 'Lora', stack: '"Lora", Georgia, serif', google: 'Lora:wght@400;500;600;700' },
   'source-serif': { name: 'Source Serif 4', stack: '"Source Serif 4", Georgia, serif', google: 'Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700' },
   cormorant: { name: 'Cormorant Garamond', stack: '"Cormorant Garamond", Garamond, Georgia, serif', google: 'Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500' },
+  'bebas-neue': { name: 'Bebas Neue', stack: '"Bebas Neue", "Arial Narrow", Impact, sans-serif', google: 'Bebas+Neue' },
+  'eb-garamond': { name: 'EB Garamond', stack: '"EB Garamond", Garamond, Georgia, serif', google: 'EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500' },
+  bricolage: { name: 'Bricolage Grotesque', stack: '"Bricolage Grotesque", system-ui, sans-serif', google: 'Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600' },
   'instrument-serif': { name: 'Instrument Serif', stack: '"Instrument Serif", Georgia, serif', google: 'Instrument+Serif' },
   system: { name: 'System Sans', stack: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' },
   'ibm-plex-mono': { name: 'IBM Plex Mono', stack: '"IBM Plex Mono", ui-monospace, Menlo, monospace', google: 'IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400', mono: true },
@@ -119,6 +122,7 @@ export function sanitizeDesign(input: Partial<Design> | undefined): Design {
     bodyFont: font(d.bodyFont, DEFAULT_DESIGN.bodyFont),
     monoFont: typeof d.monoFont === 'string' && FONTS[d.monoFont]?.mono ? d.monoFont : 'system-mono',
     radius: d.radius === 'none' || d.radius === 'round' ? d.radius : 'soft',
+    ...(d.stickyHeader === true ? { stickyHeader: true } : {}),
     contentSize: typeof d.contentSize === 'string' ? d.contentSize : DEFAULT_DESIGN.contentSize,
     wideSize: typeof d.wideSize === 'string' ? d.wideSize : DEFAULT_DESIGN.wideSize,
   };
@@ -200,10 +204,26 @@ export function cleanThemeJsonPatch(input: unknown): ThemeJsonPatch {
   return rest;
 }
 
+/**
+ * Sticky header: the header template part stays at the top (WordPress renders it as
+ * `.wp-site-blocks > header.wp-block-template-part` too). Appended after the theme's own
+ * CSS so a style patch can't drop it; the admin bar offset keeps it visible when logged in.
+ * `--pp-header-h` (unset without a sticky header) is what other sticky things offset by:
+ * `top: calc(var(--pp-header-h, 0px) + 1.5rem)`. A style whose header isn't ~92px tall sets
+ * `--pp-header-size` on :root.
+ */
+export const STICKY_HEADER_CSS =
+  ':root{--pp-header-h:var(--pp-header-size,5.75rem)}' +
+  '.wp-site-blocks>header.wp-block-template-part{position:sticky;top:0;z-index:100;background:var(--wp--preset--color--base)}' +
+  'body.admin-bar .wp-site-blocks>header.wp-block-template-part{top:var(--wp-admin--admin-bar--height,32px)}' +
+  'html{scroll-padding-top:calc(var(--pp-header-h) + .5rem)}';
+
 export function buildThemeJson(design: Design, patch?: ThemeJsonPatch) {
-  const tj = baseThemeJson(design);
-  if (!patch) return tj;
-  return { ...mergeThemeJson(tj, patch as Record<string, any>), $schema: tj.$schema, version: 3 } as typeof tj;
+  const base = baseThemeJson(design);
+  const tj = patch ? ({ ...mergeThemeJson(base, patch as Record<string, any>), $schema: base.$schema, version: 3 } as typeof base) : base;
+  if (!design.stickyHeader) return tj;
+  const css = [tj.styles?.css, STICKY_HEADER_CSS].filter(Boolean).join('\n');
+  return { ...tj, styles: { ...tj.styles, css } } as typeof tj;
 }
 
 function baseThemeJson(design: Design) {

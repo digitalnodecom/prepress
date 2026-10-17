@@ -51,6 +51,11 @@ export interface SetPattern {
   sections: BlockNode[];
 }
 
+const PICS = 'https://prepress.s3.fr-par.scw.cloud/_library/the-margin';
+/** A photograph printed like a plate in the letter: black and white, multiplied into the paper, caption in mono. */
+const plate = (file: string, alt: string, caption: string, attributes: Record<string, unknown> = {}) =>
+  b('core/image', { url: `${PICS}/the-margin-${file}.jpg`, alt, caption, className: 'pe-plate', ...attributes });
+
 export const PATTERNS: SetPattern[] = [
   {
     key: 'front-page',
@@ -108,6 +113,17 @@ export const PATTERNS: SetPattern[] = [
     ],
   },
   {
+    key: 'plate',
+    title: 'Paper photo plate',
+    description: 'One documentary photograph printed across the wide measure like a plate in a book, with a numbered figure caption in mono.',
+    tags: ['image', 'photo', 'editorial'],
+    sections: [
+      section('Plate', 'paper', [
+        plate('press', 'An old printer inking a Heidelberg platen press, type cases on the wall behind him', 'Fig. 2 — The Heidelberg at Tipografia Lloyd, Trieste. Ink dries at its own speed.', { align: 'wide' }),
+      ], { top: 70, bottom: 70 }),
+    ],
+  },
+  {
     key: 'essay',
     title: 'Paper essay',
     description: 'A complete essay opening on the reading measure: kicker, headline, deck, byline, a drop-cap lede, body text with a margin sidenote, a subhead, a pull quote and an asterism to close.',
@@ -118,6 +134,7 @@ export const PATTERNS: SetPattern[] = [
         h('On slow software', 1),
         deck('The programs we keep for decades are quiet, a little stubborn and never in a hurry. What they know that the rest of our tools forgot.'),
         pe('byline'),
+        plate('desk', 'A writer’s desk at night: an open notebook, a fountain pen, a lamp and an old computer', 'Fig. 1 — Where the letter is written, Wednesday nights.', { align: 'wide' }),
         pe('lede'),
         p('I have been thinking about why. The calendar I use was written in 1998 by one person in Graz.<sup>1</sup> It has had four updates since I installed it. None of them moved a button.'),
         pe('note', { number: '1', text: 'He still answers email, usually within a week, always in full sentences.' }),
@@ -125,6 +142,7 @@ export const PATTERNS: SetPattern[] = [
         h('Patience is a feature', 2, { fontSize: 'xx-large' }),
         p('Slow software is not slow to use. It is slow to change. It treats the habits you built around it as something worth protecting, and it assumes you will still be here next year.'),
         pe('pullquote', { quote: 'Software should be a place you visit, not a place that visits you.', look: 'rule' }),
+        plate('timer', 'An old mechanical kitchen timer on a marble counter beside half a lemon', 'Fig. 3 — Forty years, one dial, no updates.', { align: 'center', width: '320px' }),
         p('That is the whole argument, really. The rest of this letter is examples — seven of them, from a text editor to a kitchen timer — and one confession about a to-do app I abandoned three times.<sup>2</sup>'),
         pe('note', { number: '2', text: 'It is now on its eleventh redesign. I wish it well, from a distance.' }),
         p('If there is a lesson, it is an old one from the print shop: make the thing well, then leave it alone long enough for people to love it.'),
@@ -204,12 +222,12 @@ export const PATTERNS: SetPattern[] = [
   {
     key: 'about',
     title: 'Paper about the editor',
-    description: 'About the editor: an engraved laurel beside a mono label, a heading, three paragraphs and a handwritten-feeling italic signature.',
+    description: 'About the editor: a black-and-white portrait beside a mono label, a heading, three paragraphs and a handwritten-feeling italic signature.',
     tags: ['about', 'bio', 'editorial'],
     sections: [
       section('About the editor', 'paper', [
         cols(['36%', '64%'], [
-          [pe('engraving', { motif: 'laurel', size: 'l', caption: 'Ex libris — The Margin' })],
+          [plate('ana', 'Ana Novak by the window of her flat, bookshelves behind her', 'Ana, at home in Trieste.')],
           [
             label('The editor', { textColor: 'accent' }),
             h('Hello, I’m Ana', 2, { fontSize: 'xx-large' }),

@@ -14,20 +14,21 @@ const title = (eyebrow: string, text: string, lead: string) =>
 export const TEMPLATE = {
   key: 'template',
   title: 'Kinetic Studio',
-  description: 'A complete four-page studio site in Kinetic Grotesk: kinetic hero, work index, manifesto, services, stats, client marquee, testimonial and a giant wordmark footer.',
+  description: 'A complete four-page studio site in Kinetic Grotesk: kinetic hero, case-study pictures, work index, manifesto, services, stats, client marquee, testimonial and a giant wordmark footer.',
   tags: ['studio', 'agency', 'portfolio', 'brutalist'],
   name: 'Kinetic',
   tagline: 'Brand & digital studio',
   brief:
-    'Kinetic: a small independent brand and digital studio. Swiss-brutalist, confident, a little loud: paper, ink and one acid accent, oversized grotesk type, motion everywhere it helps. Visitors should see the work, understand the services, and start a project (email or book a call). Keep copy short and punchy; uppercase display headlines.',
+    'Kinetic: a small independent brand and digital studio. Swiss-brutalist, confident, a little loud: paper, ink and one acid accent, oversized grotesk type, motion everywhere it helps. Visitors should see the work, understand the services, and start a project (email or book a call). Keep copy short and punchy; uppercase display headlines. The project and studio photographs are generated samples: replace them with the real work.',
   pages: [
-    { title: 'Home', slug: 'home', sections: ['hero', 'work-index', 'manifesto', 'stats', 'clients', 'testimonial', 'cta'] },
-    { title: 'Work', slug: 'work', sections: ['page-title', 'work-index', 'clients', 'cta'] },
+    { title: 'Home', slug: 'home', sections: ['hero', 'case-studies', 'work-index', 'manifesto', 'stats', 'clients', 'testimonial', 'cta'] },
+    { title: 'Work', slug: 'work', sections: ['page-title', 'case-studies', 'work-index', 'clients', 'cta'] },
     {
       title: 'Studio',
       slug: 'studio',
       sections: [
         title('The studio — Ljubljana', 'Studio', 'Eleven people, one floor, no account managers. The people you meet are the people who make the work.'),
+        'studio-floor',
         'manifesto',
         'services',
         'stats',

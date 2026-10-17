@@ -4,6 +4,35 @@ This file is for the next agent or developer picking up this project. It explain
 
 Last updated: 2026-10-14 · Version: v0.3 · Target: WordPress 7.0
 
+## v0.16 — library set #6: Frost / Chorus (mobile-app landing, tasteskill v2)
+
+- `library-sets/chorus/`, direction "The product performs" (seed 1372792141; Bricolage Grotesque, frost and slate, one teal). Idea: the app's own output — the spectrogram — becomes the working interface fragments the page is made of. Fictional app "Chorus" (names the bird from a ten-second recording).
+- Blocks `prepress/chorus-hero|row|stages|notes|plans`, each a working fragment marked `data-ui`, all interaction via CSS radio/checkbox state (no script): pick a recording → spectrogram draws + bird named; tick the row to keep it; a four-stop track swaps clause and screen; a pinned field note changed by language / Latin / offline / night / postcard controls; plan names drive one price stage. Spectrograms are generated SVG per species.
+- Pictures: public-domain plates (Nozeman & Sepp, *Nederlandsche vogelen*; Grönvold) from Wikimedia Commons at `prepress.s3…/_library/chorus/`, credited in the footer.
+- Gate: inspector 0 FAIL, 2 WARN (no video; ten sizes counting the interface's own). Deviations: the hero reel doesn't advance on scroll (slivers only); the CTA's "blank" is the two download buttons, not an email field (no form backend); the stages use radio stops, not a range input (CSS can't read a range value).
+- New font: Bricolage Grotesque. Live: template `9qi4ilgimz`, demo `chorus.prepress.digitalno.de`.
+
+## v0.15 — library set #5: Passport (art-directed with tasteskill v2)
+
+- `library-sets/hut/`, directed with the `design-taste-frontend` skill (direction "The page is the object", seed 904979176; Bebas Neue / EB Garamond, sand and moss). Idea: the hut stamp in a walker's mountain passport becomes the paper card the first screen is printed on. Live thing: the trail picker (`prepress/hut-routes`, CSS radio state, no script).
+- Blocks `prepress/hut-pass|stamp|routes|menu-item|receipt`; section compositions (drag row with a scroll-timeline progress bar, giant word over `core/details` bars, scalloped menu sheet, split FAQ, card on a `core/cover`, back-of-card footer) are classes in the style CSS.
+- Pictures: public-domain postcards (Julian Alps 1912/1930/1966, Lake Bohinj 1950s–60s) and a CC0 panorama from Wikimedia Commons, toned to one warm monochrome and hosted at `prepress.s3…/_library/sedmera/`; credited in the footer. Importing the template copies them into the site's own media library.
+- Gate: tasteskill `inspect.mjs` 0 FAIL, 3 WARN (no video; the drag row scrolls sideways by design; fluid sizes at tablet width). Deviations from the sheet: the curtain footer became a rise-in footer (the pinned version failed covered-text/long-pin); the drag row has no arrow buttons (no JS); the receipt has no selectable options.
+- New fonts: Bebas Neue, EB Garamond. The skill's working files land in `.taste-skill/` (not part of the app).
+
+## v0.14 — FX: a blocks-only library collection
+
+- `library-sets/fx/` (`blocksOnly: true`): 11 standalone blocks published without style/patterns/template — split-flap board, typewriter headline, CRT terminal, starfield panel, aurora panel, frosted glass card, pattern field (Truchet / moiré / dots / scales), orbit, ring gauge, count-up number, mini bar chart. Pure CSS, palette-driven; numbers count up with registered `@property` integers + `counter()` (final value shows where animation is off).
+- Written from scratch; forevercomponents.com was only a source of effect ideas (its components are paid/proprietary, nothing copied).
+- `buildLibrarySet` supports `blocksOnly` sets: the set's design + `showcase` sections only dress the previews; items are the blocks with no lineage. Tests branch accordingly.
+- Gotcha: "always dark" surfaces must anchor to black (tinted with primary), not mix from `contrast` — on dark styles contrast is light.
+
+## v0.13 — library set #4: Showroom (product launch)
+
+- `library-sets/showroom/`: a white-gallery product-launch style (white + #f5f5f7 mist, ink #1d1d1f, one blue for links and compact pills, orange accent for "New" labels; Inter set tight; 28px cards, no shadows), built from a third-party style reference but with a fictional brand (Norde / Fold 2) and no third-party names, logos or fonts.
+- Blocks `prepress/showroom-device|pricing|localnav|chapters|spec|finishes`. Hardware is drawn in CSS from palette mixes (open foldable that unfolds on scroll, closed foldable, camera back, watch); `localnav` is sticky and must sit top-level in the page (not inside a group). Every block carries the CSS it needs (pill styles are duplicated in `localnav` and `pricing`: block CSS only loads where the block is used).
+- 11 patterns, template *Norde* (Fold 2, Design, Tech specs, Buy); demo `norde.prepress.digitalno.de`; 79 official library items.
+
 ## v0.12 — official templates in New site; library opens on Templates
 
 - New site dialog: a "By Prepress" row (official library templates, live previews) above the built-in starters, fetched via `/api/library/items?type=template&official=1`; hidden when offline. Choosing one imports it (`startFromLibrary` in App.tsx), applies the typed site name, and puts the "about" text first in the brief, followed by the template's brief.
@@ -88,10 +117,10 @@ Owner's direction (2026-10-15): Prepress is **the interface for creating a site*
 
 - **Password removed** everywhere (server sessions, `/api/login`, Login screen, `admin-password.txt`, `--password`, `--no-auth`, `--host`). Replaced by: listen on 127.0.0.1 only, `Host` header must be loopback (421 otherwise — DNS rebinding), Origin check on writes. Old `admin-password.txt` / `sessions.json` files in existing data folders are simply ignored.
 - **Publish targets = connection strings** (`server/targets/`): `sftp://` via ssh2 (pure JS, replaces the system `sftp` batch; password, agent or key; TOFU host-key pin per target), `ftp://`/`ftps://` via basic-ftp, `s3://` with a hand-written SigV4 (AWS, R2, MinIO, Spaces …), folders. Secrets only in `<data>/deploy.json` (0600), masked in every response; `MASK` sent back keeps them. UI: Site → **Publish to** (one connection field + templates, Test, Save, plain-FTP warning).
-- **Desktop app** `desktop/` (Tauri 2, Rust): launcher (create site in `~/Documents/Prepress/<name>`, open folder, recent sites), native menus (Sites…, New Site…, Open Site Folder…, Show Site Folder, Open Preview in Browser), external links → system browser, downloads → `~/Downloads` + reveal, server killed on quit (and exits by itself if the app dies: `PREPRESS_PARENT_PID`). `npm run build:desktop` → `.app` + `.dmg` (macOS); build on Windows/Linux for those.
+- **Desktop app** `desktop/` (Tauri 2, Rust): launcher (create site in `~/Documents/Prepress/<name>`, open folder, recent sites), native menus (Sites…, New Site…, Open Site Folder…, Show Site Folder, Open Preview in Browser), external links → system browser, downloads → `~/Downloads` + reveal, server killed on quit (and exits by itself if the app dies: `PREPRESS_PARENT_PID`). `npm run build:desktop` → `.app` + `.dmg` (macOS); build on Windows/Linux for those. Signed + notarized with a Developer ID; updates itself from `_downloads/latest.json` (since 0.6.2; 0.6.1 and older need one manual download). Release: build with the signing env, then `scripts/release-desktop.ts`.
 - Tests: `tests/deploy.test.ts` runs full publishes against an in-process SFTP server (ssh2 `Server`, `tests/fixtures/sftp-server.ts`), a minimal FTP server (`tests/fixtures/ftp-server.ts`), a signature-checking S3 stand-in, and a folder; SigV4 checked against AWS's two published examples; connection-string parsing/masking. `tests/server.test.ts` checks the Host guard.
 - Verified by hand: compiled binary → real OpenSSH (key auth) publish + Test (shows pinned host key); the editor's Publish-to form (templates, plain-FTP warning, connection error message); the desktop app opens a site straight into the editor (no login), the launcher renders with no recent sites, quitting stops the server.
-- Not verified: real AWS S3 / R2 (no credentials here; signing matches AWS's vectors), FTPS against a real server, the desktop app on Windows/Linux, "Create site" click in the app (would write to ~/Documents), code signing / notarization (the .app is ad-hoc signed: other Macs will need right-click → Open until it's signed with a Developer ID).
+- Not verified: real AWS S3 / R2 (no credentials here; signing matches AWS's vectors), FTPS against a real server, the desktop app on Windows/Linux, "Create site" click in the app (would write to ~/Documents).
 - Open for the hosted version (prepress.digitalno.de): where site data lives, how a hosted service uploads (SFTP from the server; only S3-style storage can be written from the browser), auth.
 
 ## v0.5 changes

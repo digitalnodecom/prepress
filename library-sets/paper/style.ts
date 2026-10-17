@@ -20,6 +20,7 @@ export const DESIGN: Design = {
   bodyFont: 'newsreader',
   monoFont: 'ibm-plex-mono',
   radius: 'none',
+  stickyHeader: true,
   contentSize: '680px',
   wideSize: '1240px',
 };
@@ -74,6 +75,9 @@ export const THEME_JSON = {
       '.wp-block-site-title a{font-style:normal}',
       '@media (max-width:640px){.pe-header-cta{display:none!important}}',
       '@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}',
+      // Photo plates: printed into the paper (grayscale, multiplied, a touch of contrast), figure caption in mono.
+      '.pe-plate img{filter:grayscale(1) contrast(1.06);mix-blend-mode:multiply}',
+      '.pe-plate figcaption{margin-top:.8em;font-family:var(--wp--preset--font-family--mono);font-size:.72rem;letter-spacing:.06em;text-align:left;color:color-mix(in srgb,currentColor 72%,transparent)}',
     ].join('\n'),
   },
 };

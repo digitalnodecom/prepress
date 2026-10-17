@@ -16,11 +16,15 @@ import { sharePattern, shareBlock, shareStyle, shareTemplate, type LibraryDraft 
 
 export interface LibrarySetDef {
   key: string;
+  /** A blocks-only collection publishes just its blocks; the style and `showcase` pages only dress the previews. */
+  blocksOnly?: boolean;
   style: { key: string; title: string; description: string; tags: string[]; design: Design; themeJson: Record<string, unknown> };
   blocks: CustomBlockDef[];
   patterns: { key: string; title: string; description: string; tags: string[]; sections: BlockNode[] }[];
   header: BlockNode[];
   footer: BlockNode[];
+  /** Blocks-only sets: one section per block, used as that block's library preview. */
+  showcase?: BlockNode[];
   template: {
     key: string;
     title: string;
@@ -64,7 +68,8 @@ export function buildLibrarySet(set: LibrarySetDef): BuiltSet {
 
   const patternMarkup = new Map(set.patterns.map((p) => [p.key, markup(p.sections)]));
   const patterns: PatternDef[] = set.patterns.map((p, i) => ({ id: 5000 + i, slug: p.key, title: p.title, description: p.description, content: patternMarkup.get(p.key)!, synced: false, categories: [set.key] }));
-  const pages = set.template.pages.map((pg) => ({
+  const pageSpecs = set.blocksOnly ? [{ title: 'Showcase', slug: 'home', sections: set.showcase ?? [] }] : set.template.pages;
+  const pages = pageSpecs.map((pg) => ({
     id: uid(),
     title: pg.title,
     slug: pg.slug,
@@ -90,6 +95,11 @@ export function buildLibrarySet(set: LibrarySetDef): BuiltSet {
     patterns,
   };
   site = patchThemeJson(site, set.style.themeJson);
+
+  if (set.blocksOnly) {
+    const items: SetItem[] = blocks.map((bl) => ({ key: `block:${bl.name.split('/')[1]}`, draft: shareBlock(site, bl.name, { description: bl.description, tags: [set.key, 'block', ...(bl.category ? [bl.category] : [])] }), uses: [] }));
+    return { site, items, report };
+  }
 
   const used = (m: string) => blockNames.filter((n) => m.includes(`<!-- wp:${n} `) || m.includes(`<!-- wp:${n} /-->`) || m.includes(`<!-- wp:${n}-->`)).map((n) => `block:${n.split('/')[1]}`);
   const items: SetItem[] = [

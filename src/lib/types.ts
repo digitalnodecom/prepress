@@ -35,6 +35,8 @@ export interface Design {
   /** Mono slot (datelines, numbers, code): a key into FONTS with `mono`. Older designs lack it → system mono. */
   monoFont?: string;
   radius: Radius;
+  /** Header stays pinned to the top while the page scrolls. Older designs lack it → off. */
+  stickyHeader?: boolean;
   contentSize: string;
   wideSize: string;
 }

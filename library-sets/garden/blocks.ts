@@ -226,7 +226,7 @@ ${PAINT('.ng-bot')}`,
 export const arch: CustomBlockDef = {
   name: 'prepress/garden-arch',
   title: 'Garden arch',
-  description: 'An arched window onto a night sky — moonlit, dusk or lantern amber — with a plant in silhouette against it. The set’s stand-in for a photograph.',
+  description: 'An arched window: a photograph, or (with no photo) a night sky — moonlit, dusk or lantern amber — with a plant in silhouette against it.',
   icon: 'format-image',
   category: 'media',
   attributes: {
@@ -234,8 +234,10 @@ export const arch: CustomBlockDef = {
     sky: { type: 'string', label: 'Sky', control: 'select', options: ['moon', 'dusk', 'amber'], default: 'moon' },
     height: { type: 'string', label: 'Height', control: 'select', options: ['s', 'm', 'l'], default: 'm' },
     caption: { type: 'string', label: 'Caption', control: 'text', default: '' },
+    photo: { type: 'string', label: 'Photo (replaces the sky and plant)', control: 'image', default: '' },
+    alt: { type: 'string', label: 'Photo description (alt text)', control: 'text', default: '' },
   },
-  template: `<figure class="ng-arch" data-motif="{{motif}}" data-sky="{{sky}}" data-height="{{height}}"{{^caption}} aria-hidden="true"{{/caption}}><div class="ng-arch__frame"><span class="ng-arch__orb" aria-hidden="true"></span>${botanicalSvgs('ng-arch__svg')}</div>{{#caption}}<figcaption>{{caption}}</figcaption>{{/caption}}</figure>`,
+  template: `<figure class="ng-arch" data-motif="{{motif}}" data-sky="{{sky}}" data-height="{{height}}"{{^caption}}{{^photo}} aria-hidden="true"{{/photo}}{{/caption}}><div class="ng-arch__frame"><span class="ng-arch__orb" aria-hidden="true"></span>${botanicalSvgs('ng-arch__svg')}{{#photo}}<img class="ng-arch__photo" src="{{photo}}" alt="{{alt}}">{{/photo}}</div>{{#caption}}<figcaption>{{caption}}</figcaption>{{/caption}}</figure>`,
   css: `
 .ng-arch{margin:0}
 .ng-arch__frame{position:relative;overflow:hidden;isolation:isolate;aspect-ratio:3/4;border-radius:999px 999px 0 0;border:1px solid ${MIX('contrast', 22)};color:${C('base')};background:radial-gradient(1.5px 1.5px at 22% 24%,${C('contrast')},transparent),radial-gradient(1px 1px at 70% 16%,${C('contrast')},transparent),radial-gradient(1px 1px at 46% 36%,${MIX('contrast', 80)},transparent),radial-gradient(1.5px 1.5px at 84% 40%,${MIX('contrast', 70)},transparent),radial-gradient(1px 1px at 12% 46%,${MIX('contrast', 70)},transparent),linear-gradient(to bottom,${C('secondary')},${MIX('secondary', 60, C('base'))})}
@@ -249,6 +251,9 @@ export const arch: CustomBlockDef = {
 ${showMotif('.ng-arch', 'ng-arch__svg')}
 ${PAINT('.ng-arch')}
 .ng-arch{--ng-vein:${C('secondary')};--ng-heart:${C('base')}}
+.ng-arch__photo{position:absolute;inset:0;z-index:1;width:100%;height:100%;object-fit:cover;transform:scale(1.04);transition:transform 1.6s cubic-bezier(.2,.7,.2,1)}
+.ng-arch__frame:has(.ng-arch__photo)::after{content:"";position:absolute;inset:0;z-index:2;pointer-events:none;box-shadow:inset 0 0 0 1px ${MIX('contrast', 14)};background:linear-gradient(to top,${MIX('base', 35)},transparent 35%)}
+.ng-arch:hover .ng-arch__photo{transform:scale(1)}
 @media (max-width:600px){.ng-arch{max-width:17rem;margin-inline:auto}}
 .ng-arch figcaption{margin-top:.9em;font-family:${MONO};font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;text-align:center;opacity:.75}`,
 };

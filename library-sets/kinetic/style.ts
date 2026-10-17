@@ -18,6 +18,7 @@ export const DESIGN: Design = {
   headingFont: 'syne',
   bodyFont: 'inter',
   radius: 'none',
+  stickyHeader: true,
   contentSize: '760px',
   wideSize: '1440px',
 };
@@ -57,6 +58,8 @@ export const THEME_JSON = {
       },
     },
     css: [
+      // Turning stickers and marquees may poke past the edge; never scroll sideways (clip keeps sticky working).
+      '.wp-site-blocks{overflow-x:clip}',
       `body{background-image:${GRAIN};background-attachment:fixed;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}`,
       '::selection{background:var(--wp--preset--color--accent);color:var(--wp--preset--color--contrast)}',
       ':where(a,button,summary,[tabindex]):focus-visible{outline:3px solid var(--wp--preset--color--accent);outline-offset:3px;box-shadow:0 0 0 6px var(--wp--preset--color--contrast)}',
@@ -68,6 +71,11 @@ export const THEME_JSON = {
       '.has-accent-background-color .kx-hl{background:var(--wp--preset--color--contrast);color:var(--wp--preset--color--accent)}',
       ':where(h1,h2,h3,h4,.has-statement-font-size,.has-xx-large-font-size,.has-xxx-large-font-size,.has-display-font-size,.has-mega-font-size){overflow-wrap:normal;word-break:normal;hyphens:manual}',
       '.wp-block-separator.is-style-wide{border-top-width:1px}',
+      // Project pictures: square corners, an acid frame snaps in on hover, caption = client + meta.
+      '.kx-case img{display:block;width:100%;height:auto;transition:outline-offset .25s,outline-color .25s;outline:.5rem solid transparent;outline-offset:0}',
+      '.kx-case a:hover img,.kx-case a:focus-visible img{outline-color:var(--wp--preset--color--accent);outline-offset:-.5rem}',
+      '.kx-case figcaption{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.25rem 1rem;margin-top:.9rem;font-size:var(--wp--preset--font-size--small);font-weight:600;letter-spacing:.1em;text-transform:uppercase;text-align:left}',
+      '.kx-case figcaption strong{font-family:var(--wp--preset--font-family--heading);font-size:1.35rem;font-weight:800;letter-spacing:-.02em}',
       '@media (max-width:640px){.kx-header-cta{display:none!important}}',
       '@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}',
     ].join('\n'),

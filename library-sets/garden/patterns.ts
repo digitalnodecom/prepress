@@ -53,11 +53,15 @@ export interface SetPattern {
   sections: BlockNode[];
 }
 
+const PICS = 'https://prepress.s3.fr-par.scw.cloud/_library/nocturne';
+/** An arch holding one of the set's photographs. */
+const photo = (file: string, alt: string, attributes: Record<string, unknown>) => ng('arch', { ...attributes, photo: `${PICS}/nocturne-${file}.jpg`, alt });
+
 export const PATTERNS: SetPattern[] = [
   {
     key: 'hero',
     title: 'Night Garden hero',
-    description: 'A lantern-lit italic headline with fireflies, a short welcome and two pill buttons, beside a tall moonlit arch with a monstera in silhouette.',
+    description: 'A lantern-lit italic headline with fireflies, a short welcome and two pill buttons, beside a tall arch with a photograph of the courtyard at night.',
     tags: ['hero', 'restaurant', 'dark'],
     sections: [
       section('Hero', 'night', [
@@ -67,7 +71,7 @@ export const PATTERNS: SetPattern[] = [
             p('A walled courtyard behind Gornji trg, open from dusk. Small plates from the fire, natural wine from the Karst and a garden that smells of fig leaves after rain.', { fontSize: 'large' }),
             buttons([{ text: 'Book a table', url: '#reserve' }, { text: 'See the menu', url: '/menu/', outline: true }]),
           ],
-          [ng('arch', { motif: 'monstera', sky: 'moon', height: 'l' })],
+          [photo('courtyard', 'The fig tree in the courtyard at night, hung with paper lanterns over candle-lit tables', { motif: 'monstera', sky: 'moon', height: 'l' })],
         ], 80, { verticalAlignment: 'center' }),
       ], { top: 70, bottom: 80 }),
     ],
@@ -75,12 +79,12 @@ export const PATTERNS: SetPattern[] = [
   {
     key: 'story',
     title: 'Night Garden story',
-    description: 'Our story: a dusk arch with eucalyptus beside a label, heading, two paragraphs and a slowly turning seal.',
+    description: 'Our story: an arched photograph of the grill at dusk beside a label, heading, two paragraphs and a slowly turning seal.',
     tags: ['about', 'story', 'restaurant'],
     sections: [
       section('Story', 'dusk', [
         cols(['42%', '58%'], [
-          [ng('arch', { motif: 'eucalyptus', sky: 'dusk', height: 'm', caption: 'The courtyard, late September' })],
+          [photo('fire', 'Leeks charring on the wood-fire grill in the garden kitchen', { motif: 'eucalyptus', sky: 'dusk', height: 'm', caption: 'The grill, late September' })],
           [
             label('Our garden'),
             h('A courtyard that wakes up <em>after dark</em>', 2, { fontSize: 'xxx-large' }),
@@ -127,16 +131,16 @@ export const PATTERNS: SetPattern[] = [
   {
     key: 'evenings',
     title: 'Night Garden evenings',
-    description: 'Evenings and events: three arch cards — each a different plant and sky — with a mono date line, a title and one sentence.',
+    description: 'Evenings and events: three arched photographs — fish, records, a long supper table — each with a mono date line, a title and one sentence.',
     tags: ['events', 'cards', 'restaurant'],
     sections: [
       section('Evenings', 'dusk', [
         label('Evenings', center),
         h('Something on most nights', 2, { fontSize: 'xxx-large', ...center }),
         cols(['', '', ''], [
-          [ng('arch', { motif: 'poppy', sky: 'dusk', height: 's' }), label('Thursdays · 19:00'), h('Fish from Piran', 3, { fontSize: 'x-large' }), p('Whatever the boat brought in, cooked whole over the fire. Until it’s gone.')],
-          [ng('arch', { motif: 'fern', sky: 'moon', height: 's' }), label('Fridays · 21:00'), h('Records in the garden', 3, { fontSize: 'x-large' }), p('A guest brings a crate of vinyl. Quiet enough to talk, loud enough to stay.')],
-          [ng('arch', { motif: 'moonflower', sky: 'amber', height: 's' }), label('Last Sunday · 18:00'), h('Winemakers’ supper', 3, { fontSize: 'x-large' }), p('Five courses, five bottles and the people who made them. Twenty-four seats.')],
+          [photo('fish', 'A whole grilled sea bream with fennel and blood orange', { motif: 'poppy', sky: 'dusk', height: 's' }), label('Thursdays · 19:00'), h('Fish from Piran', 3, { fontSize: 'x-large' }), p('Whatever the boat brought in, cooked whole over the fire. Until it’s gone.')],
+          [photo('records', 'A record player and a crate of vinyl on a garden table at night', { motif: 'fern', sky: 'moon', height: 's' }), label('Fridays · 21:00'), h('Records in the garden', 3, { fontSize: 'x-large' }), p('A guest brings a crate of vinyl. Quiet enough to talk, loud enough to stay.')],
+          [photo('supper', 'Guests raising glasses at a long candle-lit table', { motif: 'moonflower', sky: 'amber', height: 's' }), label('Last Sunday · 18:00'), h('Winemakers’ supper', 3, { fontSize: 'x-large' }), p('Five courses, five bottles and the people who made them. Twenty-four seats.')],
         ], 60),
       ], { top: 80, bottom: 80, gap: 40 }),
     ],
@@ -199,7 +203,7 @@ export const PATTERNS: SetPattern[] = [
   {
     key: 'private-dining',
     title: 'Night Garden private dining',
-    description: 'Private dining: a label, heading, a paragraph, the facts in mono and a button, beside an amber arch with a moonflower.',
+    description: 'Private dining: a label, heading, a paragraph, the facts in mono and a button, beside a tall arched photograph of the glasshouse set for dinner.',
     tags: ['private', 'events', 'booking'],
     sections: [
       section('Private dining', 'dusk', [
@@ -211,7 +215,7 @@ export const PATTERNS: SetPattern[] = [
             p('Up to 12 guests · Set menu from €85 · Wine pairing from €45 · Available every evening', { fontFamily: 'mono', fontSize: 'small', style: { typography: { letterSpacing: '0.08em', lineHeight: '1.9' } } }),
             buttons([{ text: 'Ask about a date', url: 'mailto:glasshouse@nocturne.example' }]),
           ],
-          [ng('arch', { motif: 'moonflower', sky: 'amber', height: 'l', caption: 'The glasshouse' })],
+          [photo('glasshouse', 'The glasshouse set for a private dinner, candles down one long table', { motif: 'moonflower', sky: 'amber', height: 'l', caption: 'The glasshouse' })],
         ], 80, { verticalAlignment: 'center' }),
       ], { top: 80, bottom: 80 }),
     ],
@@ -219,14 +223,14 @@ export const PATTERNS: SetPattern[] = [
   {
     key: 'gallery',
     title: 'Night Garden arches',
-    description: 'A row of three arches — fern under the moon, poppy at dusk, eucalyptus in lantern light — with captions. A gallery without photographs.',
+    description: 'A row of three arched photographs from the garden at night — the north wall, the kitchen beds, the fig tree — with captions.',
     tags: ['gallery', 'illustration', 'decor'],
     sections: [
       section('Gallery', 'night', [
         cols(['', '', ''], [
-          [ng('arch', { motif: 'fern', sky: 'moon', height: 'm', caption: 'The north wall' })],
-          [ng('arch', { motif: 'poppy', sky: 'dusk', height: 'm', caption: 'The kitchen beds' })],
-          [ng('arch', { motif: 'eucalyptus', sky: 'amber', height: 'm', caption: 'By the glasshouse' })],
+          [photo('north-wall', 'Ferns on the old north wall under a paper lantern', { motif: 'fern', sky: 'moon', height: 'm', caption: 'The north wall' })],
+          [photo('kitchen-beds', 'Raised herb beds at dusk with a lantern on a post', { motif: 'poppy', sky: 'dusk', height: 'm', caption: 'The kitchen beds' })],
+          [photo('fig', 'Ripe figs on the courtyard tree, lit by a lantern', { motif: 'eucalyptus', sky: 'amber', height: 'm', caption: 'The fig tree' })],
         ], 50),
       ], { top: 60, bottom: 80 }),
     ],

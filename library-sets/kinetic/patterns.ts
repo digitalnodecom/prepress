@@ -44,6 +44,13 @@ function split(num: string, label: string, content: BlockNode[]): BlockNode {
 const row = (n: string, title: string, meta: string, year: string, url = '/work/') => k('index-row', { number: n, title, meta, year, url });
 const pills = (...items: BlockNode[]) => b('core/group', { layout: { type: 'flex', flexWrap: 'wrap' }, style: { spacing: { blockGap: SP(30) } } }, items);
 
+const PICS = 'https://prepress.s3.fr-par.scw.cloud/_library/kinetic';
+/** A project picture: links to the work, caption = client — disciplines · year. */
+const shot = (file: string, alt: string, client: string, meta: string) =>
+  b('core/image', { url: `${PICS}/kinetic-${file}.jpg`, alt, href: '/work/', linkDestination: 'custom', className: 'kx-case', caption: `<strong>${client}</strong> ${meta}` });
+const pair = (left: BlockNode, right: BlockNode) =>
+  b('core/columns', { align: 'wide', style: { spacing: { blockGap: { left: SP(50) } } } }, [b('core/column', {}, [left]), b('core/column', {}, [right])]);
+
 export interface SetPattern {
   key: string;
   title: string;
@@ -80,13 +87,51 @@ export const PATTERNS: SetPattern[] = [
     tags: ['portfolio', 'index', 'list'],
     sections: [
       section('Work index', 'paper', [
-        split('01', 'Selected work', [
+        split('02', 'Project index', [
           row('01', 'Lumen Energy', 'Identity · Web', '2026'),
           row('02', 'Fieldwork', 'Product · App', '2025'),
           row('03', 'Atlas Architects', 'Identity · Print', '2025'),
           row('04', 'Northwind Records', 'Campaign · Motion', '2024'),
           row('05', 'Parcel & Co', 'Web · E-commerce', '2024'),
           pills(k('pill', { label: 'All projects', url: '/work/', look: 'outline' })),
+        ]),
+      ]),
+    ],
+  },
+  {
+    key: 'case-studies',
+    title: 'Kinetic case studies',
+    description: 'Big project pictures: a section label, one screen-wide case and two pairs below, each linked with a client and discipline caption; an acid frame snaps in on hover.',
+    tags: ['portfolio', 'gallery', 'images'],
+    sections: [
+      section('Case studies', 'paper', [
+        b('core/group', { align: 'wide', layout: { type: 'constrained' } }, [k('label', { number: '01', text: 'Selected work' })]),
+        b('core/image', { align: 'wide', url: `${PICS}/kinetic-lumen.jpg`, alt: 'Lumen Energy posters and a billboard with the concentric sun mark on a concrete wall', href: '/work/', linkDestination: 'custom', className: 'kx-case', caption: '<strong>Lumen Energy</strong> Identity · Web · 2026' }),
+        pair(
+          shot('fieldwork', 'The Fieldwork app on a phone held up in a wheat field', 'Fieldwork', 'Product · App · 2025'),
+          shot('atlas', 'A stack of Atlas Architects monographs on concrete in hard window light', 'Atlas Architects', 'Identity · Print · 2025'),
+        ),
+        pair(
+          shot('northwind', 'Northwind Records sleeves on a record-shop wall, one held up by hand', 'Northwind Records', 'Campaign · Motion · 2024'),
+          shot('parcel', 'Stacked Parcel & Co boxes with black and acid stripes and lime tape', 'Parcel & Co', 'Web · E-commerce · 2024'),
+        ),
+      ], { top: 70 }),
+    ],
+  },
+  {
+    key: 'studio-floor',
+    title: 'Kinetic studio floor',
+    description: 'A screen-wide photograph of the studio, then a smaller picture beside a short paragraph about how the team works.',
+    tags: ['about', 'team', 'images'],
+    sections: [
+      section('Studio floor', 'paper', [
+        b('core/image', { align: 'wide', url: `${PICS}/kinetic-studio.jpg`, alt: 'The studio floor: long tables, big factory windows and posters on a white brick wall', className: 'kx-case', caption: '<strong>The floor</strong> An old tool factory in Šiška, Ljubljana' }),
+        b('core/columns', { align: 'wide', verticalAlignment: 'center', style: { spacing: { blockGap: { left: SP(60) } } } }, [
+          b('core/column', { width: '40%' }, [b('core/image', { url: `${PICS}/kinetic-proofs.jpg`, alt: 'Hands arranging printed poster proofs on a big table', className: 'kx-case', caption: '<strong>Proofs</strong> Everything gets printed before it ships' })]),
+          b('core/column', { width: '60%' }, [
+            p('Everything starts on paper.', { fontSize: 'xx-large', fontFamily: 'heading', style: { typography: { fontWeight: '800', lineHeight: '0.95', letterSpacing: '-0.04em', textTransform: 'uppercase' } } }),
+            p('Every identity, poster and screen gets printed, pinned to the wall and argued over before a client sees it. If it doesn’t hold up at arm’s length, it doesn’t ship.', { fontSize: 'large' }),
+          ]),
         ]),
       ]),
     ],

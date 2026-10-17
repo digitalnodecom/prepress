@@ -9,6 +9,8 @@
 //! password: the server only answers on 127.0.0.1 (see server/app.ts).
 //! A "site" is just its data folder; the launcher page (ui/) lists recent ones.
 //! Publishing goes to the site's publish targets (sftp://, ftps://, s3://, a folder).
+//! Updates: the app checks `plugins.updater.endpoints` (tauri.conf.json) at start, every few
+//! hours and from "Check for Updates…"; updates are minisign-signed (scripts/release-desktop.ts).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::{
@@ -17,7 +19,10 @@ use std::{
     net::{SocketAddr, TcpListener, TcpStream},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
     thread::sleep,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -28,8 +33,9 @@ use tauri::{
     webview::{DownloadEvent, NewWindowResponse},
     AppHandle, Manager, RunEvent, State, Url, WebviewUrl, WebviewWindowBuilder,
 };
-use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_opener::OpenerExt;
+use tauri_plugin_updater::UpdaterExt;
 
 const MAIN: &str = "main";
 
@@ -45,6 +51,10 @@ struct AppState {
     running: Mutex<Option<Running>>,
     /// Where the current download is being saved (macOS doesn't report it on finish).
     download: Mutex<Option<PathBuf>>,
+    /// An update check or install is running.
+    updating: AtomicBool,
+    /// The version the user said "Later" to: automatic checks don't ask again for it.
+    declined: Mutex<Option<String>>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -173,7 +183,12 @@ fn log_file(app: &AppHandle) -> PathBuf {
 
 fn log_tail(file: &Path) -> String {
     let text = fs::read_to_string(file).unwrap_or_default();
-    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    // Keep the error message: drop stack frames and the runtime banner, which say nothing to a user.
+    let lines: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with("at ") && !l.starts_with("Bun v"))
+        .collect();
     lines[lines.len().saturating_sub(4)..].join("\n")
 }
 
@@ -360,6 +375,97 @@ fn reveal(app: AppHandle, path: String) -> Result<(), String> {
     app.opener().reveal_item_in_dir(path).map_err(|e| e.to_string())
 }
 
+// ---------- updates ----------
+
+/// A message box, off the async runtime (the dialog blocks until answered). True for the first button.
+async fn ask(app: &AppHandle, kind: MessageDialogKind, title: String, text: String, buttons: MessageDialogButtons) -> bool {
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || app.dialog().message(text).title(title).kind(kind).buttons(buttons).blocking_show())
+        .await
+        .unwrap_or(false)
+}
+
+/// Check for a newer version; offer to install it and restart. `manual` (the menu item) also
+/// reports "up to date" and errors; automatic checks stay silent unless there is an update.
+fn check_for_update(app: &AppHandle, manual: bool) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let state = app.state::<AppState>();
+        if state.updating.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let result = update(&app, manual).await;
+        state.updating.store(false, Ordering::SeqCst);
+        if let Err(e) = result {
+            eprintln!("update: {e}");
+            if manual {
+                ask(&app, MessageDialogKind::Error, "Couldn’t update Prepress".into(), e, MessageDialogButtons::Ok).await;
+            }
+        }
+    });
+}
+
+async fn update(app: &AppHandle, manual: bool) -> Result<(), String> {
+    let found = app.updater().map_err(|e| e.to_string())?.check().await.map_err(|e| e.to_string())?;
+    let Some(update) = found else {
+        if manual {
+            let text = format!("Prepress {} is the newest version.", env!("CARGO_PKG_VERSION"));
+            ask(app, MessageDialogKind::Info, "You’re up to date".into(), text, MessageDialogButtons::Ok).await;
+        }
+        return Ok(());
+    };
+    let state = app.state::<AppState>();
+    if !manual && state.declined.lock().unwrap().as_deref() == Some(update.version.as_str()) {
+        return Ok(());
+    }
+    let notes = update.body.as_deref().map(str::trim).filter(|n| !n.is_empty()).map(|n| format!("{n}\n\n")).unwrap_or_default();
+    let text = format!(
+        "Prepress {} is available (you have {}).\n\n{notes}Prepress restarts to finish. Your sites are saved as you edit.",
+        update.version, update.current_version
+    );
+    let yes = ask(
+        app,
+        MessageDialogKind::Info,
+        "Update Prepress".into(),
+        text,
+        MessageDialogButtons::OkCancelCustom("Install and Restart".into(), "Later".into()),
+    )
+    .await;
+    if !yes {
+        *state.declined.lock().unwrap() = Some(update.version.clone());
+        return Ok(());
+    }
+
+    // Progress in the window title; the editor stays usable while it downloads.
+    let window = app.get_webview_window(MAIN);
+    let title = window.as_ref().and_then(|w| w.title().ok()).unwrap_or_else(|| "Prepress".into());
+    let (mut got, mut shown) = (0u64, u64::MAX);
+    let version = update.version.clone();
+    let installed = update
+        .download_and_install(
+            |chunk, total| {
+                got += chunk as u64;
+                let pct = total.filter(|t| *t > 0).map(|t| got * 100 / t).unwrap_or(0);
+                if pct != shown {
+                    shown = pct;
+                    if let Some(w) = &window {
+                        let _ = w.set_title(&format!("Downloading Prepress {version}… {pct}%"));
+                    }
+                }
+            },
+            || {},
+        )
+        .await;
+    if let Err(e) = installed {
+        if let Some(w) = &window {
+            let _ = w.set_title(&title);
+        }
+        return Err(e.to_string());
+    }
+    stop_server(&state);
+    app.restart();
+}
+
 // ---------- window, menu ----------
 
 fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
@@ -375,6 +481,7 @@ fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         true,
         &[
             &PredefinedMenuItem::about(app, Some("About Prepress"), Some(about))?,
+            &MenuItem::with_id(app, "update", "Check for Updates…", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::services(app, None)?,
             &PredefinedMenuItem::separator(app)?,
@@ -427,7 +534,9 @@ fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     if cfg!(target_os = "macos") {
         Menu::with_items(app, &[&app_menu, &file, &edit, &view, &window])
     } else {
-        Menu::with_items(app, &[&file, &edit, &view, &window])
+        // No app menu outside macOS: the update item goes under Help.
+        let help = Submenu::with_items(app, "Help", true, &[&MenuItem::with_id(app, "update", "Check for Updates…", true, None::<&str>)?])?;
+        Menu::with_items(app, &[&file, &edit, &view, &window, &help])
     }
 }
 
@@ -446,6 +555,7 @@ fn on_menu(app: &AppHandle, id: &str) {
                 let _ = app.opener().open_url(format!("http://127.0.0.1:{port}/"), None::<&str>);
             }
         }
+        "update" => check_for_update(app, true),
         "reload" => {
             if let Some(w) = app.get_webview_window(MAIN) {
                 let _ = w.eval("location.reload()");
@@ -459,6 +569,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![list_sites, sites_folder, create_site, pick_folder, open_site, forget_site, reveal])
         .menu(menu)
@@ -500,6 +611,17 @@ fn main() {
                     true
                 })
                 .build()?;
+            // Release builds look for updates shortly after start, then every 6 hours.
+            if !cfg!(debug_assertions) {
+                let app = app.handle().clone();
+                std::thread::spawn(move || {
+                    sleep(Duration::from_secs(8));
+                    loop {
+                        check_for_update(&app, false);
+                        sleep(Duration::from_secs(6 * 3600));
+                    }
+                });
+            }
             Ok(())
         })
         .build(tauri::generate_context!())

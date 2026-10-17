@@ -56,3 +56,17 @@ describe('mono font slot', () => {
     expect(compileGlobalStyles(d)).toContain('--wp--preset--font-family--mono');
   });
 });
+
+describe('sticky header', () => {
+  test('off by default; on, it survives a style patch and reaches the compiled CSS', () => {
+    expect(sanitizeDesign({}).stickyHeader).toBeUndefined();
+    expect(sanitizeDesign({ stickyHeader: 'yes' as any }).stickyHeader).toBeUndefined();
+    const on = sanitizeDesign({ stickyHeader: true });
+    expect(on.stickyHeader).toBe(true);
+    expect((buildThemeJson(design) as any).styles.css).not.toContain('position:sticky');
+    const tj: any = buildThemeJson(on, { styles: { css: '.mine{color:red}' } });
+    expect(tj.styles.css).toContain('.mine{color:red}');
+    expect(tj.styles.css).toContain('header.wp-block-template-part{position:sticky');
+    expect(compileGlobalStyles(on)).toContain('position:sticky');
+  });
+});

@@ -11,12 +11,12 @@ const title = (kicker: string, text: string, intro: string) =>
 export const TEMPLATE = {
   key: 'template',
   title: 'Nocturne',
-  description: 'A complete evening restaurant and wine bar site in Night Garden: lantern-lit hero with fireflies, story, menu with prices, evenings, opening hours and directions, private dining and a reservation card on every page.',
+  description: 'A complete evening restaurant and wine bar site in Night Garden: lantern-lit hero with fireflies, night photographs in arched frames, story, menu with prices, evenings, opening hours and directions, private dining and a reservation card on every page.',
   tags: ['restaurant', 'bar', 'hospitality', 'dark'],
   name: 'Nocturne',
   tagline: 'Garden restaurant & wine bar',
   brief:
-    'Nocturne: an evening garden restaurant and natural-wine bar in a walled courtyard in Ljubljana’s old town, open Wednesday to Sunday from dusk. Dark, warm and romantic: night green, moonlight cream and lantern amber, italic Cormorant Garamond headlines, DM Mono for prices and hours, arches and botanical drawings instead of photos. Visitors should see the menu, know when it is open and how to find the gate, and book a table (booking link and phone, no forms). Write warmly and briefly, like a good host.',
+    'Nocturne: an evening garden restaurant and natural-wine bar in a walled courtyard in Ljubljana’s old town, open Wednesday to Sunday from dusk. Dark, warm and romantic: night green, moonlight cream and lantern amber, italic Cormorant Garamond headlines, DM Mono for prices and hours, night photographs in arched frames (generated samples: swap in photographs of the real place and food; an arch with no photo shows a drawn plant against the sky). Visitors should see the menu, know when it is open and how to find the gate, and book a table (booking link and phone, no forms). Write warmly and briefly, like a good host.',
   pages: [
     { title: 'Home', slug: 'home', sections: ['hero', 'story', 'menu', 'evenings', 'press', 'reserve'] },
     { title: 'Menu', slug: 'menu', sections: ['page-title', 'menu', 'gallery', 'reserve'] },

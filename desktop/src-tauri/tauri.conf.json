@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Prepress",
-  "version": "0.6.0",
+  "version": "0.6.2",
   "identifier": "com.digitalnode.prepress",
   "build": {
     "frontendDist": "../ui"
@@ -18,10 +18,29 @@
     "targets": "all",
     "category": "DeveloperTool",
     "shortDescription": "Build websites with the WordPress block editor and publish them anywhere",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
-    "externalBin": ["binaries/prepress"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "externalBin": [
+      "binaries/prepress"
+    ],
     "macOS": {
-      "minimumSystemVersion": "11.0"
+      "minimumSystemVersion": "11.0",
+      "hardenedRuntime": true,
+      "entitlements": "./Entitlements.plist"
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlEMDdDQzlFOTU5NEM2MEIKUldRTHhwU1Zuc3dIbmI3V2d6MnpqaWhwZEVQNnVPTHZHb3pzdytQb0NrWlVZUGU3dU42ZzZpTGEK",
+      "endpoints": [
+        "https://prepress.s3.fr-par.scw.cloud/_downloads/latest.json"
+      ]
     }
   }
 }

@@ -18,6 +18,7 @@ export const DESIGN: Design = {
   bodyFont: 'dm-sans',
   monoFont: 'dm-mono',
   radius: 'round',
+  stickyHeader: true,
   contentSize: '720px',
   wideSize: '1280px',
 };
@@ -56,6 +57,8 @@ export const THEME_JSON = {
     },
     css: [
       ':root{color-scheme:dark}',
+      // The hero glow bleeds past the column on purpose; never scroll sideways (clip keeps sticky working).
+      '.wp-site-blocks{overflow-x:clip}',
       'body{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}',
       `:where(.has-base-background-color,.has-muted-background-color,.has-secondary-background-color){background-image:${GRAIN}}`,
       'h1,h2{font-style:italic}',

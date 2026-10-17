@@ -99,6 +99,12 @@ export function DesignPanel({ design, onChange }: Props) {
         </div>
       </div>
 
+      <div className="field">
+        <label className="check">
+          <input type="checkbox" checked={!!d.stickyHeader} onChange={(e) => update({ ...d, stickyHeader: e.target.checked })} /> Sticky header (stays at the top while scrolling)
+        </label>
+      </div>
+
       <div className="row">
         <div className="field grow">
           <label htmlFor="content-size">Content width</label>

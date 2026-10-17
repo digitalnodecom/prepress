@@ -147,7 +147,7 @@ export const label: CustomBlockDef = {
   },
   template: `<p class="kx-label"><span class="kx-label__num">({{number}})</span><span class="kx-label__text">{{text}}</span></p>`,
   css: `
-.wp-block-prepress-kinetic-label{position:sticky;top:1.5rem;align-self:start}
+.wp-block-prepress-kinetic-label{position:sticky;top:calc(var(--pp-header-h, 0px) + 1.5rem);align-self:start}
 .kx-label{margin:0;display:flex;flex-direction:column;gap:.35rem;font-family:${BODY};font-size:.8rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase}
 .kx-label__num{font-family:${HEADING};font-size:clamp(2.2rem,4vw,3.4rem);font-weight:800;letter-spacing:-.04em;line-height:1}`,
 };
