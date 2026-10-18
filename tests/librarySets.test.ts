@@ -19,6 +19,7 @@ const EXPECT: Record<keyof typeof SETS, { pages: string[]; headerBlock: string; 
   hut: { pages: ['home'], headerBlock: 'is-style-hut-header', preview: { item: 'pattern:hero', contains: ['is-style-hut-passport', 'hp-stampbox', 'Bebas+Neue', 'EB+Garamond'] } },
   chorus: { pages: ['home'], headerBlock: 'is-style-chorus-header', preview: { item: 'pattern:hero', contains: ['ch-hero', 'data-ui', 'Bricolage+Grotesque'] } },
   programme: { pages: ['home', 'programme', 'speakers', 'tickets', 'visit'], headerBlock: 'is-style-programme-header', preview: { item: 'pattern:hero', contains: ['is-style-programme-pinned', 'Hanken+Grotesk', 'color-scheme:dark'] } },
+  switchback: { pages: ['home', 'product', 'pricing', 'customers'], headerBlock: 'is-style-switchback-header', preview: { item: 'pattern:hero', contains: ['is-style-switchback-hero', 'Archivo:wdth', '--wp--custom--switchback--ex2'] } },
   paper: { pages: ['home', 'essays', 'on-slow-software', 'about', 'subscribe'], headerBlock: 'is-style-paper-desktop-only', preview: { item: 'pattern:essay', contains: ['is-style-paper-lede', 'p.is-style-paper-lede::first-letter{', 'is-style-paper-sidenote', '--wp--preset--font-family--mono', 'IBM+Plex+Mono', 'Newsreader'] } },
 };
 

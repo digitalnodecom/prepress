@@ -17,6 +17,9 @@ export const b = (name: string, attributes: Record<string, unknown> = {}, innerB
 export const p = (content: string, attributes: Record<string, unknown> = {}) => b('core/paragraph', { content, ...attributes });
 export const h = (content: string, level: number, attributes: Record<string, unknown> = {}) => b('core/heading', { content, level, ...attributes });
 export const img = (url: string, alt: string, attributes: Record<string, unknown> = {}) => b('core/image', { url, alt, ...attributes });
+/** A header logo: the image links home; `height` is the shown height in px, the file is 200px tall. */
+export const logo = (url: string, name: string, size: [number, number], height: number) =>
+  b('core/image', { url, alt: name, width: `${Math.round((size[0] * height) / size[1])}px`, height: `${height}px`, sizeSlug: 'full', linkDestination: 'custom', href: '/', style: { spacing: { margin: { top: '0', bottom: '0' } } } });
 export const group = (attributes: Record<string, unknown>, children: BlockNode[]) => b('core/group', { layout: { type: 'default' }, ...attributes }, children);
 export const row = (attributes: Record<string, unknown>, children: BlockNode[]) => b('core/group', { ...attributes, layout: { type: 'flex', flexWrap: 'nowrap', ...((attributes.layout as object) ?? {}) } }, children);
 export const button = (text: string, url: string, attributes: Record<string, unknown> = {}) => b('core/button', { text, url, ...attributes });

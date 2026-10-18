@@ -4,7 +4,7 @@
  * from them. Copy is written for "Kinetic", a small independent studio.
  */
 import type { BlockNode } from '../../src/lib/types';
-import { b, button, buttons, h, is, p, section as kitSection, SP, type SetPattern } from '../kit';
+import { b, button, buttons, h, is, p, section as kitSection, SP, type SetPattern, logo } from '../kit';
 
 export { b, h, p, SP };
 type Tone = 'paper' | 'ink' | 'acid';
@@ -326,7 +326,7 @@ export const HEADER: BlockNode[] = [
     },
     [
       b('core/group', { align: 'wide', layout: { type: 'flex', justifyContent: 'space-between', flexWrap: 'wrap' } }, [
-        b('core/site-title', { level: 0, fontFamily: 'heading', fontSize: 'large', style: { typography: { fontWeight: '800', letterSpacing: '-0.04em', textTransform: 'uppercase' } } }),
+        logo(`${PICS}/logo-kinetic-2.png`, 'Kinetic', [1805, 200], 22),
         b('core/group', { layout: { type: 'flex', flexWrap: 'wrap' }, style: { spacing: { blockGap: SP(50) } } }, [
           b('core/navigation', { layout: { type: 'flex', justifyContent: 'right' }, style: { typography: { fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em' } }, fontSize: 'small' }, [
             b('core/navigation-link', { label: 'Work', url: '/work/', kind: 'custom' }),

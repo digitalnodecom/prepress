@@ -7,7 +7,7 @@
  * of the hut itself (to be replaced with the hut's own).
  */
 import type { BlockNode } from '../../src/lib/types';
-import { b, group, h, img as kitImg, is, p, row, section as kitSection, SP, type SetPattern } from '../kit';
+import { b, group, h, img as kitImg, is, p, row, section as kitSection, SP, type SetPattern, logo } from '../kit';
 
 export { b, h, p, SP };
 export const hp = (slug: string, attributes: Record<string, unknown> = {}) => b(`prepress/hut-${slug}`, attributes);
@@ -251,7 +251,7 @@ export const HEADER: BlockNode[] = [
     },
     [
       b('core/group', { align: 'wide', layout: { type: 'flex', justifyContent: 'space-between', flexWrap: 'wrap' } }, [
-        b('core/site-title', { level: 0, fontFamily: 'heading', fontSize: 'x-large', style: { typography: { textTransform: 'uppercase', lineHeight: '1' } } }),
+        logo(`${PICS}/logo-sedmera-2.png`, 'Sedmera', [843, 200], 36),
         b('core/navigation', { fontSize: 'medium', layout: { type: 'flex', justifyContent: 'center' }, style: { spacing: { blockGap: SP(50) } } }, [
           b('core/navigation-link', { label: 'The walk', url: '#walk', kind: 'custom' }),
           b('core/navigation-link', { label: 'The lakes', url: '#lakes', kind: 'custom' }),

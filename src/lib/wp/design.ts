@@ -36,11 +36,14 @@ export const FONTS: Record<string, FontDef> = {
   'eb-garamond': { name: 'EB Garamond', stack: '"EB Garamond", Garamond, Georgia, serif', google: 'EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500' },
   'hanken-grotesk': { name: 'Hanken Grotesk', stack: '"Hanken Grotesk", system-ui, sans-serif', google: 'Hanken+Grotesk:ital,wght@0,400;0,500;0,700;1,400' },
   bricolage: { name: 'Bricolage Grotesque', stack: '"Bricolage Grotesque", system-ui, sans-serif', google: 'Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600' },
+  // Condensed only: just the 75% width is loaded, so the face is condensed wherever it's used.
+  'archivo-condensed': { name: 'Archivo Condensed', stack: '"Archivo", "Arial Narrow", sans-serif', google: 'Archivo:wdth,wght@75,700;75,800;75,900' },
   'instrument-serif': { name: 'Instrument Serif', stack: '"Instrument Serif", Georgia, serif', google: 'Instrument+Serif' },
   system: { name: 'System Sans', stack: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' },
   'ibm-plex-mono': { name: 'IBM Plex Mono', stack: '"IBM Plex Mono", ui-monospace, Menlo, monospace', google: 'IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400', mono: true },
   'jetbrains-mono': { name: 'JetBrains Mono', stack: '"JetBrains Mono", ui-monospace, Menlo, monospace', google: 'JetBrains+Mono:wght@400;500;600', mono: true },
   'dm-mono': { name: 'DM Mono', stack: '"DM Mono", ui-monospace, Menlo, monospace', google: 'DM+Mono:wght@400;500', mono: true },
+  'roboto-mono': { name: 'Roboto Mono', stack: '"Roboto Mono", ui-monospace, monospace', google: 'Roboto+Mono:wght@500', mono: true },
   'space-mono': { name: 'Space Mono', stack: '"Space Mono", ui-monospace, Menlo, monospace', google: 'Space+Mono:wght@400;700', mono: true },
   'system-mono': { name: 'System Mono', stack: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', mono: true },
 };

@@ -7,7 +7,7 @@
  * contacts are samples.
  */
 import type { BlockNode } from '../../src/lib/types';
-import { b, h, img as kitImg, is, p, section as kitSection, SP, type SetPattern } from '../kit';
+import { b, h, img as kitImg, is, p, section as kitSection, SP, type SetPattern, logo } from '../kit';
 
 export { b, h, p, SP };
 export const ch = (slug: string, attributes: Record<string, unknown> = {}) => b(`prepress/chorus-${slug}`, attributes);
@@ -170,7 +170,7 @@ export const HEADER: BlockNode[] = [
     },
     [
       b('core/group', { align: 'wide', layout: { type: 'flex', justifyContent: 'space-between', flexWrap: 'wrap' } }, [
-        b('core/site-title', { level: 0, fontSize: 'large', style: { typography: { fontWeight: '600', letterSpacing: '-0.03em' } } }),
+        logo(`${PICS}/logo-chorus-2.png`, 'Chorus', [768, 200], 36),
         b('core/group', { layout: { type: 'flex', flexWrap: 'nowrap' }, style: { spacing: { blockGap: SP(50) } } }, [
           b('core/navigation', { fontSize: 'small', layout: { type: 'flex' }, style: { spacing: { blockGap: SP(50) } } }, [
             b('core/navigation-link', { label: 'How it works', url: '#how', kind: 'custom' }),

@@ -4,7 +4,7 @@
  * evening garden restaurant and wine bar in a Ljubljana courtyard.
  */
 import type { BlockNode } from '../../src/lib/types';
-import { b, cols as kitCols, group, h, is, p, row, section as kitSection, SP, type SetPattern } from '../kit';
+import { b, cols as kitCols, group, h, is, p, row, section as kitSection, SP, type SetPattern, logo } from '../kit';
 
 export { b, h, p, SP };
 type Tone = 'night' | 'dusk' | 'leaf';
@@ -274,7 +274,7 @@ export const HEADER: BlockNode[] = [
     },
     [
       b('core/group', { align: 'wide', layout: { type: 'flex', justifyContent: 'space-between', flexWrap: 'wrap' } }, [
-        b('core/site-title', { level: 0, fontFamily: 'heading', fontSize: 'x-large', style: { typography: { fontStyle: 'italic', fontWeight: '400' } } }),
+        logo(`${PICS}/logo-nocturne-2.png`, 'Nocturne', [546, 200], 44),
         b('core/group', { layout: { type: 'flex', flexWrap: 'wrap' }, style: { spacing: { blockGap: SP(50) } } }, [
           b('core/navigation', { fontFamily: 'mono', fontSize: 'small', layout: { type: 'flex', justifyContent: 'right' }, style: { typography: { fontWeight: '400', textTransform: 'uppercase', letterSpacing: '0.16em' }, spacing: { blockGap: SP(50) } } }, [
             b('core/navigation-link', { label: 'Menu', url: '/menu/', kind: 'custom' }),

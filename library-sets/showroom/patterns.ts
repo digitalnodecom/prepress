@@ -4,7 +4,7 @@
  * hardware maker launching the Fold 2 foldable phone.
  */
 import type { BlockNode } from '../../src/lib/types';
-import { b, cols as kitCols, h, img, is, p, section as kitSection, SP, type SetPattern } from '../kit';
+import { b, cols as kitCols, h, img, is, p, section as kitSection, SP, type SetPattern, logo } from '../kit';
 
 export { b, h, p, SP };
 type Tone = 'white' | 'mist';
@@ -328,7 +328,7 @@ export const HEADER: BlockNode[] = [
     },
     [
       b('core/group', { align: 'wide', layout: { type: 'flex', justifyContent: 'space-between', flexWrap: 'nowrap' } }, [
-        b('core/site-title', { level: 0, fontSize: 'medium', style: { typography: { fontWeight: '600', letterSpacing: '-0.02em' } } }),
+        logo(`${PICS}/logo-norde-2.png`, 'Norde', [666, 200], 26),
         b('core/navigation', { fontSize: 'fine', layout: { type: 'flex', justifyContent: 'right' }, style: { typography: { fontWeight: '400', letterSpacing: '-0.01em' }, spacing: { blockGap: SP(50) } } }, [
           b('core/navigation-link', { label: 'Fold 2', url: '/', kind: 'custom' }),
           b('core/navigation-link', { label: 'Design', url: '/design/', kind: 'custom' }),

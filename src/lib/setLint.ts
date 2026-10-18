@@ -32,8 +32,9 @@ const BUILTIN_STYLES: Record<string, string[]> = {
 
 const IMPORTANT_OK = /^(margin|padding|max-width|min-width|width|flex|gap|row-gap|column-gap|display|grid|order|align-self|justify-self|align-items|justify-content|position|top|inset)/;
 const COLOR_LITERAL = /#[0-9a-fA-F]{3,8}\b|\b(rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(/;
+// A token times a factor (calc(var(--wp--custom--radius--lg)*1.67)) still follows the Design's corners.
 // Percentages describe a shape (circles, ellipses, a drawn device's bezel), not the Design's corners.
-const RADIUS_OK = /^(0|0px|\d+(\.\d+)?%|999px|9999px|100vmax|inherit|initial|unset|var\(--wp--custom--radius--(sm|md|lg|pill)\))$/;
+const RADIUS_OK = /^(0|0px|\d+(\.\d+)?%|999px|9999px|100vmax|inherit|initial|unset|var\(--wp--custom--radius--(sm|md|lg|pill)\)|calc\(var\(--wp--custom--radius--(sm|md|lg)\)\*[\d.]+\))$/;
 
 interface Rule {
   selector: string; // '' for declarations at top level of a nested css string

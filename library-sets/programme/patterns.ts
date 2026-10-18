@@ -5,7 +5,7 @@
  * photographs are generated samples, to be replaced with the event's own.
  */
 import type { BlockNode } from '../../src/lib/types';
-import { b, button, buttons, group, h, img as kitImg, is, p, row, section as kitSection, SP, type SetPattern } from '../kit';
+import { b, button, buttons, group, h, img as kitImg, is, p, row, section as kitSection, SP, type SetPattern, logo } from '../kit';
 import { programmeDays } from './blocks';
 import { details } from '../kit';
 
@@ -66,7 +66,7 @@ export const PATTERNS: SetPattern[] = [
     tags: ['schedule', 'programme', 'event'],
     sections: [
       section('Programme', 'base', [
-        intro('Programme', 'Five places around the harbour, a few minutes apart on foot. Everything is in English or Slovenian with English subtitles.'),
+        intro('Three days, five places', 'Five places around the harbour, a few minutes apart on foot. Everything is in English or Slovenian with English subtitles.'),
         programmeDays({ align: 'wide', group: 'day', label: 'Day', day1: 'Fri 3', day2: 'Sat 4', day3: 'Sun 5', all: 'All days' }, [
           day('Friday 3 September', [
             slot('17:00', 'Opening walk along the harbour', 'With Nika Brenko, who keeps the town’s boat registers', 'The quay'),
@@ -258,7 +258,7 @@ export const HEADER: BlockNode[] = [
     },
     [
       b('core/group', { align: 'wide', layout: { type: 'flex', justifyContent: 'space-between', flexWrap: 'nowrap' } }, [
-        b('core/site-title', { level: 0, fontSize: 'medium', style: { typography: { fontWeight: '700', letterSpacing: '-0.02em' } } }),
+        logo(`${PICS}/logo-pomol-2.png`, 'Pomol', [700, 200], 28),
         b('core/navigation', { fontSize: 'medium', layout: { type: 'flex', justifyContent: 'center' }, style: { spacing: { blockGap: SP(40) } } }, [
           b('core/navigation-link', { label: 'Programme', url: '/programme/', kind: 'custom' }),
           b('core/navigation-link', { label: 'Speakers', url: '/speakers/', kind: 'custom' }),

@@ -4,7 +4,7 @@
  * design, slow software and the craft of making things.
  */
 import type { BlockNode } from '../../src/lib/types';
-import { b, cols as kitCols, h, is, p, section as kitSection, SP, type SetPattern } from '../kit';
+import { b, cols as kitCols, h, is, p, section as kitSection, SP, type SetPattern, logo } from '../kit';
 
 export { b, h, p, SP };
 type Tone = 'paper' | 'tint' | 'ink' | 'oxblood';
@@ -311,7 +311,7 @@ export const HEADER: BlockNode[] = [
     },
     [
       b('core/group', { align: 'wide', layout: { type: 'flex', justifyContent: 'space-between', flexWrap: 'wrap' } }, [
-        b('core/site-title', { level: 0, fontFamily: 'heading', fontSize: 'x-large', style: { typography: { fontWeight: '500', letterSpacing: '-0.02em' } } }),
+        logo(`${PICS}/logo-margin-2.png`, 'The Margin', [1133, 200], 34),
         b('core/group', { layout: { type: 'flex', flexWrap: 'wrap' }, style: { spacing: { blockGap: SP(50) } } }, [
           b('core/navigation', { fontFamily: 'mono', fontSize: 'small', layout: { type: 'flex', justifyContent: 'right' }, style: { typography: { fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.12em' }, spacing: { blockGap: SP(50) } } }, [
             b('core/navigation-link', { label: 'Essays', url: '/essays/', kind: 'custom' }),
