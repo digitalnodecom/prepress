@@ -30,8 +30,9 @@ export type Provider = 'github' | 'cloudflare';
 export const CLIENT_IDS: Record<Provider, string> = {
   // GitHub OAuth App "Prepress" (digitalnodecom), device flow enabled, no client secret.
   github: process.env.PREPRESS_GITHUB_CLIENT_ID || 'Ov23liVcqQs6LPXg0uAN',
-  // Cloudflare OAuth client "Prepress": authorization code + PKCE, token auth "none".
-  cloudflare: process.env.PREPRESS_CLOUDFLARE_CLIENT_ID || 'd36e47f26e36248ba87e934fdefe2014',
+  // Cloudflare OAuth client "Prepress" (DigitalNode account, public: any Cloudflare user can connect):
+  // authorization code + PKCE, token auth "none", redirect http://localhost:47830/oauth/cloudflare/callback.
+  cloudflare: process.env.PREPRESS_CLOUDFLARE_CLIENT_ID || '962a5b2b6ce58355bfe3f28d4043d7d1',
 };
 
 type ProviderDef =
