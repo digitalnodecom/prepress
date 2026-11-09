@@ -385,6 +385,15 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 0; width: 100%; }
 .free-name input:focus { outline: none; }
 .free-name:focus-within { outline: 2px solid var(--accent); outline-offset: -1px; }
 .free-name .mono { color: var(--fg-3); white-space: nowrap; }
+.account-connect { display: flex; flex-direction: column; gap: 6px; }
+.media-field { display: flex; gap: 12px; align-items: flex-start; }
+.media-field .grow { flex: 1; min-width: 0; }
+.media-field-thumb { width: 64px; height: 64px; margin-top: 22px; object-fit: contain; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.code-warning { display: flex; gap: 6px; align-items: flex-start; }
+.code-warning .lucide { flex: none; margin-top: 2px; }
+.account-connect .row { align-items: center; }
+.device-code { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.device-code-value { font-size: 20px; font-weight: 700; letter-spacing: .12em; color: var(--fg); user-select: all; }
 
 /* Library dialog */
 .library-dialog { height: min(820px, 100%); }

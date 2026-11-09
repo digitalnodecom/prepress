@@ -2,6 +2,7 @@
  * Site-level operations. Every mutation goes through normalize → serialize, so
  * the stored markup is always valid Gutenberg content.
  */
+import { cleanPageDescription } from './siteMeta';
 import { createBlock, parse, serialize } from '@wordpress/blocks';
 import type { BlockNode, BlockStyleDef, CustomBlockDef, Design, Page, PartSlug, PatternDef, Site, SitePlan } from './types';
 import { cleanBlockDef } from './wp/customBlocks';
@@ -273,9 +274,17 @@ export function removePage(site: Site, pageId: string): Site {
 }
 
 /** Rename a page or change its slug. The front page keeps the "home" slug. */
-export function updatePage(site: Site, pageId: string, patch: { title?: string; slug?: string }): Site {
+export function updatePage(site: Site, pageId: string, patch: { title?: string; slug?: string; description?: string }): Site {
   const page = site.pages.find((p) => p.id === pageId);
   if (!page) return site;
+  if (patch.description !== undefined) {
+    const description = cleanPageDescription(patch.description);
+    if (description !== (page.description ?? '')) {
+      const { description: _old, ...rest } = page;
+      site = { ...site, pages: site.pages.map((p) => (p.id === pageId ? { ...rest, ...(description ? { description } : {}) } : p)) };
+      if (patch.title === undefined && patch.slug === undefined) return site;
+    }
+  }
   const title = patch.title?.trim() || page.title;
   let slug = page.slug;
   if (page.slug !== HOME_SLUG && patch.slug !== undefined) {

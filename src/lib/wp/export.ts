@@ -15,6 +15,7 @@ import { validateMarkup } from './markup';
 import { blockSlug, registerCustomBlocks } from './customBlocks';
 import { blockJson, blockStyleCss, comment, editorScript, functionsPhpBlocks, HELPERS_PHP, patternPhp, pluginPhp, renderPhp } from './wpBlocks';
 import { blockStylesPhp } from './blockStyles';
+import { liveBodyEnd, liveHead } from '../siteMeta';
 
 export function themeSlug(site: Site) {
   return (
@@ -179,7 +180,58 @@ function ${fn}_one_time_setup() {
 	update_option( '${fn}_setup_done', 1 );
 }
 add_action( 'admin_init', '${fn}_one_time_setup' );
-${functionsPhpBlocks(blocksInTheme ? site.blocks ?? [] : [], true, fn, slug, { blockStyles: !!site.blockStyles?.length })}`;
+${functionsPhpBlocks(blocksInTheme ? site.blocks ?? [] : [], true, fn, slug, { blockStyles: !!site.blockStyles?.length })}${
+  siteCodePhp(site, fn)
+    ? `
+/**
+ * Verification, analytics, the cookie banner and custom code (Prepress settings).
+ */
+require_once __DIR__ . '/inc/site-code.php';
+`
+    : ''
+}`;
+}
+
+/** PHP that prints HTML as-is: a nowdoc, so nothing in it can run as PHP. */
+function nowdoc(html: string) {
+  let tag = 'PREPRESS_HTML';
+  while (html.includes(tag)) tag += '_X';
+  return `<<<'${tag}'\n${html}\n${tag}`;
+}
+
+/** inc/site-code.php: siteMeta.ts's live head/body parts on wp_head / wp_footer, or '' when there are none. */
+function siteCodePhp(site: Site, fn: string): string {
+  const head = liveHead(site);
+  const foot = liveBodyEnd(site);
+  if (!head && !foot) return '';
+  return `<?php
+/**
+ * ${comment(site.name)}: verification, analytics, cookie banner and custom code,
+ * from Prepress (Settings → Search & sharing / Analytics & code).
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+${
+  head
+    ? `
+function ${fn}_site_head() {
+	echo ${nowdoc(head)};
+}
+add_action( 'wp_head', '${fn}_site_head', 1 );
+`
+    : ''
+}${
+  foot
+    ? `
+function ${fn}_site_footer() {
+	echo ${nowdoc(foot)};
+}
+add_action( 'wp_footer', '${fn}_site_footer', 100 );
+`
+    : ''
+}`;
 }
 
 function readme(site: Site, slug: string, blocksInTheme: boolean) {
@@ -297,6 +349,8 @@ export async function exportSite(site: Site, opts: ExportOptions = {}): Promise<
     pluginBlob = await plugin.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
   }
   if (site.blockStyles?.length) tf.file('inc/block-styles.php', blockStylesPhp(site.blockStyles, fn));
+  const siteCode = siteCodePhp(site, fn);
+  if (siteCode) tf.file('inc/site-code.php', siteCode);
   for (const p of (site.patterns ?? []).filter((x) => !x.synced)) tf.file(`patterns/${p.slug}.php`, patternPhp(p, slug));
   // Header and footer also as patterns, offered when a user edits or swaps those parts.
   tf.file('patterns/part-header.php', patternPhp({ slug: 'part-header', title: 'Header', content: site.header, role: 'header', blockTypes: ['core/template-part/header'] }, slug));

@@ -5,6 +5,8 @@
  *   sftp://user:pass@host/var/www/site   SSH/SFTP — password, key or ssh-agent
  *   ftps://user:pass@host/public_html    FTP over TLS (ftp:// = unencrypted)
  *   s3://KEY:SECRET@bucket/prefix        S3 and S3-compatible storage (R2, MinIO, Spaces …)
+ *   cfpages://ACCOUNT_ID/project         Cloudflare Pages (whole-site deployments, targets/cfpages.ts)
+ *   github://owner/repo                  GitHub Pages (a commit on gh-pages, targets/github.ts)
  *   /path/to/folder                      a folder on this computer
  *
  * A deploy only ever removes files it uploaded itself (tracked per target in
@@ -27,15 +29,21 @@ import { connectSftp } from './targets/sftp.ts';
 import { connectFtp } from './targets/ftp.ts';
 import { connectS3 } from './targets/s3.ts';
 import { HOSTING_DOMAIN, connectPrepress } from './targets/prepress.ts';
+import { checkCfPages, publishCfPages } from './targets/cfpages.ts';
+import { checkGithub, publishGithub } from './targets/github.ts';
+import type { OAuthOptions } from './oauth.ts';
 import { nameProblem } from '../hosting/names.ts';
 
-export type TargetType = 'folder' | 'sftp' | 'ftp' | 's3' | 'prepress';
+export type TargetType = 'folder' | 'sftp' | 'ftp' | 's3' | 'prepress' | 'cfpages' | 'github';
+
+/** Targets that take the whole site in one go (a deployment, a commit) instead of file by file. */
+const SITE_TYPES = new Set<TargetType>(['cfpages', 'github']);
 
 export interface DeployTarget {
   id: string;
   name: string;
   type: TargetType;
-  /** folder: absolute local path · sftp/ftp: remote folder ("." = login folder) · s3: key prefix ("" = bucket root). */
+  /** folder: absolute local path · sftp/ftp: remote folder ("." = login folder) · s3: key prefix ("" = bucket root) · cfpages: project · github: repository. */
   path: string;
   host?: string;
   port?: number;
@@ -54,6 +62,10 @@ export interface DeployTarget {
   accessKeyId?: string;
   /** s3 secret key (secret). */
   secretAccessKey?: string;
+  /** cfpages/github: API token (secret); absent = the connected account (oauth.ts). host = account id / owner. */
+  token?: string;
+  /** github: the branch Pages serves (default gh-pages). */
+  branch?: string;
   /** Public URL served from this target, for "Open" links. */
   url?: string;
   /** Upload automatically after every Publish. */
@@ -101,6 +113,11 @@ const HOST = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,252}$|^\[[0-9A-Fa-f:.]+\]$/;
 const USER = /^[^\u0000-\u001f\s:@/]{1,64}$/;
 const BUCKET = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/;
 const REGION = /^[a-z0-9-]{1,32}$/;
+const CF_ACCOUNT = /^[0-9a-f]{32}$/;
+const CF_PROJECT = /^[a-z0-9](?:[a-z0-9-]{0,56}[a-z0-9])?$/;
+const GH_OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+const GH_REPO = /^[A-Za-z0-9._-]{1,100}$/;
+const GH_BRANCH = /^(?!\/|.*(?:\.\.|\/\/|@\{|\.lock$|\/$))[A-Za-z0-9._/-]{1,100}$/;
 const SAFE_REL = /^(?:[a-z0-9][a-z0-9-]*\/)?[A-Za-z0-9][A-Za-z0-9._-]*$|^uploads\/[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const CONTROL = /[\u0000-\u001f]/;
 
@@ -116,7 +133,7 @@ function writeAtomic(file: string, data: string | Buffer, mode?: number) {
 }
 
 /** Where a target points; changing it makes the old upload manifest meaningless. */
-const destination = (t: DeployTarget) => JSON.stringify([t.type, t.host, t.port, t.user, t.path, t.bucket, t.endpoint, t.region]);
+const destination = (t: DeployTarget) => JSON.stringify([t.type, t.host, t.port, t.user, t.path, t.bucket, t.endpoint, t.region, t.branch]);
 
 /**
  * Validate a target from the editor: `{ id?, name?, connection, url?, auto? }`
@@ -127,18 +144,18 @@ export function cleanTarget(raw: any, guard: { dataDir: string; outDir: string }
   if (!raw || typeof raw !== 'object') throw new Error('Expected a target object');
   const fields: any = typeof raw.connection === 'string' ? { ...parseConnection(raw.connection) } : { ...raw };
   const type: TargetType = fields.type;
-  if (!['folder', 'sftp', 'ftp', 's3', 'prepress'].includes(type)) throw new Error('Unknown target type');
+  if (!['folder', 'sftp', 'ftp', 's3', 'prepress', 'cfpages', 'github'].includes(type)) throw new Error('Unknown target type');
 
   // MASK = keep the stored secret (only if the destination's login is the same).
   const sameLogin = prev && prev.type === type && prev.host === fields.host && prev.user === fields.user && prev.accessKeyId === fields.accessKeyId;
-  for (const k of ['password', 'secretAccessKey'] as const) {
+  for (const k of ['password', 'secretAccessKey', 'token'] as const) {
     if (fields[k] === MASK) {
       if (!sameLogin || !prev?.[k]) throw new Error('Enter the password / secret again (the login changed)');
       fields[k] = prev[k];
     }
   }
 
-  const defaultName = type === 'prepress' ? 'Prepress (free)' : type === 'folder' ? 'Folder' : type === 's3' ? `S3 ${fields.bucket ?? ''}`.trim() : String(fields.host ?? 'Server');
+  const defaultName = type === 'prepress' ? 'Prepress (free)' : type === 'cfpages' ? 'Cloudflare Pages' : type === 'github' ? 'GitHub Pages' : type === 'folder' ? 'Folder' : type === 's3' ? `S3 ${fields.bucket ?? ''}`.trim() : String(fields.host ?? 'Server');
   const name = String(raw.name ?? '').trim() || defaultName;
   if (!NAME.test(name)) throw new Error('Name is too long or has control characters');
   let path = String(fields.path ?? '').trim();
@@ -164,6 +181,30 @@ export function cleanTarget(raw: any, guard: { dataDir: string; outDir: string }
     t.host = name;
     t.path = '';
     t.url ??= `https://${name}.${HOSTING_DOMAIN}`;
+    return t;
+  }
+
+  if (type === 'cfpages' || type === 'github') {
+    const host = String(fields.host ?? '').trim();
+    path = path.replace(/^\/+|\/+$/g, '');
+    if (type === 'cfpages') {
+      if (!CF_ACCOUNT.test(host)) throw new Error('Cloudflare account id: the 32 characters in your dashboard URL, cfpages://ACCOUNT_ID/project');
+      if (!CF_PROJECT.test(path)) throw new Error('Pages project name: lower-case letters, digits and dashes, cfpages://ACCOUNT_ID/my-site');
+    } else {
+      if (!GH_OWNER.test(host)) throw new Error('GitHub owner: a user or organization name, github://owner/repository');
+      if (!GH_REPO.test(path) || path === '.' || path === '..') throw new Error('Repository name: letters, digits, ".", "-" or "_", github://owner/my-site');
+      if (fields.branch) {
+        if (!GH_BRANCH.test(fields.branch)) throw new Error('Bad branch name');
+        if (fields.branch !== 'gh-pages') t.branch = fields.branch;
+      }
+    }
+    if (fields.token) {
+      if (CONTROL.test(fields.token) || /\s/.test(fields.token)) throw new Error('The token contains spaces or control characters');
+      t.token = fields.token;
+    }
+    t.host = host;
+    t.path = path;
+    t.url ??= type === 'cfpages' ? `https://${path}.pages.dev` : `https://${host.toLowerCase()}.github.io${path.toLowerCase() === `${host.toLowerCase()}.github.io` ? '' : `/${path}`}`;
     return t;
   }
 
@@ -257,7 +298,8 @@ function readTargets(dataDir: string): DeployTarget[] {
 /** Targets without secrets (startup log). */
 export const listTargets = (dataDir: string) => readTargets(dataDir).map((t) => viewTarget(t));
 
-export function createDeployer(opts: { dataDir: string; outDir: string; hostingApi?: string; hostingFetch?: typeof fetch }) {
+export function createDeployer(opts: { dataDir: string; outDir: string; hostingApi?: string; hostingFetch?: typeof fetch; accounts?: Omit<OAuthOptions, 'dataDir'> }) {
+  const accountOpts: OAuthOptions = { ...opts.accounts, dataDir: opts.dataDir };
   const configFile = join(opts.dataDir, 'deploy.json');
   const stateDir = join(opts.dataDir, 'deploys');
   const locks = new Map<string, Promise<unknown>>();
@@ -336,7 +378,11 @@ export function createDeployer(opts: { dataDir: string; outDir: string; hostingA
     return { put: order(put), remove, unchanged, hashes };
   }
 
-  async function run(t: DeployTarget, src: Map<string, Buffer>, state: TargetState, plan: Plan): Promise<Partial<DeployStatus>> {
+  async function run(t: DeployTarget, src: Map<string, Buffer>, state: TargetState, plan: Plan): Promise<Partial<DeployStatus> & { siteUrl?: string }> {
+    if (SITE_TYPES.has(t.type)) {
+      const owned = Object.keys(state.files);
+      return t.type === 'cfpages' ? publishCfPages(t, src, owned, accountOpts) : publishGithub(t, src, owned, accountOpts);
+    }
     const remote = await connect(t, state);
     const backupDir = join(opts.dataDir, 'backup', `${t.id}-${stamp()}`);
     let backedUp = false;
@@ -371,9 +417,10 @@ export function createDeployer(opts: { dataDir: string; outDir: string; hostingA
       const base = { id: t.id, name: t.name, url: t.url, at: new Date().toISOString() };
       try {
         if (!src.has('index.html')) throw new Error('Nothing published yet: Publish first');
-        const extra = await run(t, src, state, plan);
+        const { siteUrl, ...extra } = await run(t, src, state, plan);
         const last: DeployStatus = { at: base.at, ok: true, uploaded: plan.put.length, removed: plan.remove.length, unchanged: plan.unchanged, ...extra };
         writeState(t.id, { files: plan.hashes, last, ...(state.hostKey ? { hostKey: state.hostKey } : {}) });
+        if (siteUrl && siteUrl !== t.url) base.url = adoptUrl(t, siteUrl);
         return { ...base, ...last };
       } catch (e: any) {
         const last: DeployStatus = { at: base.at, ok: false, uploaded: 0, removed: 0, unchanged: 0, error: String(e?.message ?? e) };
@@ -385,11 +432,29 @@ export function createDeployer(opts: { dataDir: string; outDir: string; hostingA
     return job;
   }
 
+  /**
+   * The host decided where the site lives (Cloudflare adds a suffix when the
+   * project name is taken, GitHub Pages may have a custom domain): store that as
+   * the target's URL unless the owner typed their own.
+   */
+  function adoptUrl(t: DeployTarget, siteUrl: string): string {
+    const all = list();
+    const cur = all.find((x) => x.id === t.id);
+    if (!cur) return siteUrl;
+    const derived = cleanTarget({ connection: formatConnection(cur, true) }, opts).url;
+    if (cur.url && cur.url !== derived) return cur.url;
+    cur.url = siteUrl;
+    writeAtomic(configFile, JSON.stringify({ targets: all }, null, 2), 0o600);
+    return siteUrl;
+  }
+
   /** Check a target: log in, write and delete a probe file. Pins the SFTP host key of a saved target. */
   async function test(raw: any): Promise<{ ok: boolean; message: string }> {
     try {
       const stored = list().find((p) => p.id === raw?.id);
       const t = cleanTarget(raw, opts, stored);
+      if (t.type === 'cfpages') return { ok: true, message: await checkCfPages(t, accountOpts) };
+      if (t.type === 'github') return { ok: true, message: await checkGithub(t, accountOpts) };
       const state = stored && destination(stored) === destination(t) ? readState(t.id) : { files: {} };
       const remote = await connect(t, state);
       try {

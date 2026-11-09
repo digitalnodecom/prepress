@@ -37,6 +37,7 @@ import { createMcpHandler } from './mcp.ts';
 import { createDeployer } from './deploy.ts';
 import { createClients } from './clients.ts';
 import { HOSTING_DOMAIN, checkName } from './targets/prepress.ts';
+import { accountsView, disconnect, pollDeviceFlow, startDeviceFlow, type OAuthOptions, type Provider } from './oauth.ts';
 import { createLibraryClient, libraryId } from './library.ts';
 import { createMediaImporter, localizeSite } from './media.ts';
 import { screenshot, type Device } from './screenshot.ts';
@@ -66,6 +67,8 @@ export interface ServerOptions {
   mcp?: boolean;
   /** Prepress hosting API base (default https://prepress.digitalno.de, env PREPRESS_HOSTING_API); tests point it at a local one. */
   hostingApi?: string;
+  /** Test hooks for connected accounts and the Cloudflare/GitHub targets (server/oauth.ts): fake fetch, API bases, client ids. */
+  accounts?: Omit<OAuthOptions, 'dataDir'>;
   /** Test hooks for media import (server/media.ts): fake fetch / DNS. */
   mediaImport?: { fetch?: typeof fetch; resolve?: (host: string) => Promise<string[]> };
   /** Home folder whose AI apps' configs "Connect" edits (tests use a temp folder). Default: the user's home. */
@@ -147,7 +150,7 @@ export interface PublishOptions {
   targets?: string[];
 }
 
-export type CoreOptions = Pick<ServerOptions, 'dataDir' | 'outDir' | 'siteUrl' | 'engine' | 'mediaImport' | 'hostingApi'>;
+export type CoreOptions = Pick<ServerOptions, 'dataDir' | 'outDir' | 'siteUrl' | 'engine' | 'mediaImport' | 'hostingApi' | 'accounts'>;
 
 /**
  * Everything that works on a site's data folder without HTTP: the draft store,
@@ -173,12 +176,13 @@ export function createSiteCore(opts: CoreOptions) {
   };
 
   /** Write the static site. Returns the list of files (relative to outDir) it owns. */
-  function writeStatic(pages: Record<string, string>, notFound: string | undefined, prev: string[]): string[] {
+  function writeStatic(pages: Record<string, string>, notFound: string | undefined, prev: string[], extra: Record<string, string> = {}): string[] {
     const owned = new Set(prev);
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     const files: [string, Buffer | string][] = [];
     for (const [slug, html] of Object.entries(pages)) files.push([slug === 'home' ? 'index.html' : `${slug}/index.html`, String(html)]);
     if (typeof notFound === 'string') files.push(['404.html', notFound]);
+    for (const [rel, text] of Object.entries(extra)) if (rel === 'robots.txt' || rel === 'sitemap.xml') files.push([rel, text]);
     for (const f of readdirSync(uploadsDir)) {
       if (UPLOAD_EXT.has(extname(f).toLowerCase())) files.push([`uploads/${f}`, readFileSync(join(uploadsDir, f))]);
     }
@@ -208,7 +212,7 @@ export function createSiteCore(opts: CoreOptions) {
 
   const store = new DraftStore(dir);
   const exportsDir = join(dir, 'exports');
-  const deployer = createDeployer({ dataDir: dir, outDir, hostingApi: opts.hostingApi });
+  const deployer = createDeployer({ dataDir: dir, outDir, hostingApi: opts.hostingApi, accounts: opts.accounts });
   // Publish and deploy take a lock file too: an editor server and a stdio MCP process may share this folder.
   const publishLock = join(dir, 'publish.lock');
   const deployFiles = (which?: string | string[], full = false) => deployer.deploy(readManifest().files, which, full);
@@ -225,8 +229,11 @@ export function createSiteCore(opts: CoreOptions) {
     const draft = store.read();
     if (!draft?.site?.pages?.length) throw Object.assign(new Error('There is no site to publish yet'), { status: 400 });
     engine.registerCustomBlocks(draft.site.blocks ?? []);
-    const { pages, notFound } = engine.publishFiles(draft.site);
-    const files = writeStatic(pages, notFound, readManifest().files);
+    // Canonical links and the sitemap need the public address: the site's own, else the first target that has one.
+    const targets = deployer.view();
+    const fallbackUrl = (targets.find((t) => t.auto && t.url) ?? targets.find((t) => t.url))?.url;
+    const { pages, notFound, files: extra } = engine.publishFiles(draft.site, { siteUrl: fallbackUrl });
+    const files = writeStatic(pages, notFound, readManifest().files, extra);
     const publishedAt = new Date().toISOString();
     writeAtomic(manifestFile, JSON.stringify({ publishedAt, outDir, files, by }));
     await store.patch({ publishedHash: engine.siteHash(draft.site) });
@@ -305,8 +312,9 @@ export function createHandler(opts: ServerOptions) {
 
     // Same-origin check for state-changing requests (cookie is SameSite=Strict too).
     if (req.method !== 'GET' && req.method !== 'HEAD') {
+      // "null" is a sandboxed document (the published-site preview, which may run the owner's scripts).
       const origin = req.headers.origin;
-      if (origin && new URL(origin).host !== req.headers.host) return json(res, 403, { error: 'Cross-origin request refused' });
+      if (origin && (origin === 'null' || !URL.canParse(origin) || new URL(origin).host !== req.headers.host)) return json(res, 403, { error: 'Cross-origin request refused' });
     }
 
     if (route === 'GET /api/health') {
@@ -451,6 +459,24 @@ export function createHandler(opts: ServerOptions) {
         return json(res, 502, { error: String(e?.message ?? e) });
       }
     }
+    if (route === 'GET /api/accounts') {
+      // Connected GitHub / Cloudflare accounts for publish targets (never the tokens).
+      return json(res, 200, accountsView({ ...opts.accounts, dataDir: dir }));
+    }
+    if (route === 'POST /api/accounts/connect' || route === 'POST /api/accounts/poll' || route === 'POST /api/accounts/disconnect') {
+      const body = (await readJson(req)) ?? {};
+      const provider = body.provider as Provider;
+      if (provider !== 'github' && provider !== 'cloudflare') return json(res, 400, { error: 'Unknown provider' });
+      const o: OAuthOptions = { ...opts.accounts, dataDir: dir };
+      try {
+        if (route === 'POST /api/accounts/connect') return json(res, 200, await startDeviceFlow(provider, o));
+        if (route === 'POST /api/accounts/poll') return json(res, 200, await pollDeviceFlow(provider, String(body.id ?? ''), o));
+        await disconnect(provider, o);
+        return json(res, 200, accountsView(o));
+      } catch (e: any) {
+        return json(res, e?.status && e.status < 600 ? e.status : 502, { error: String(e?.message ?? e) });
+      }
+    }
     if (route === 'POST /api/media/import') {
       // Editor: an image linked by URL (inserted, pasted) becomes a media library file.
       const { url } = (await readJson(req)) ?? {};
@@ -484,8 +510,13 @@ export function createHandler(opts: ServerOptions) {
 
   function site(res: ServerResponse, url: URL) {
     const path = decodeURIComponent(url.pathname).replace(/^\/+|\/+$/g, '');
-    const headers = { 'cache-control': 'no-cache' };
+    // Published pages may carry the owner's scripts and analytics: serve them sandboxed (an opaque
+    // origin), so nothing on them can use this server's API the way the editor on the same host can.
+    const headers = { 'cache-control': 'no-cache', 'content-security-policy': 'sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads' };
     const owned = new Set(readManifest().files);
+    if ((path === 'robots.txt' || path === 'sitemap.xml') && owned.has(path) && existsSync(join(outDir, path))) {
+      return send(res, 200, readFileSync(join(outDir, path)), path.endsWith('.xml') ? 'application/xml; charset=utf-8' : 'text/plain; charset=utf-8', headers);
+    }
     const rel = path === '' ? 'index.html' : SLUG.test(path) ? `${path}/index.html` : null;
     if (rel && owned.has(rel) && existsSync(join(outDir, rel))) {
       // Canonical URLs end in a slash, as WordPress pages (and static hosts) do.

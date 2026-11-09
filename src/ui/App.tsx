@@ -432,7 +432,7 @@ export function App() {
     setIsSample(false);
     setPageId(s.pages[0].id);
     setSelected(null);
-    flash(`Opened ${s.name}`);
+    flash(s.code?.head || s.code?.bodyEnd ? `Opened ${s.name}. It has custom code: check Settings → Analytics & code before you publish.` : `Opened ${s.name}`);
   };
 
   const navigate = (href: string) => {
@@ -706,7 +706,7 @@ export function App() {
                     onReset={() => setSite((s) => resetPart(s, part))}
                   />
                 )}
-                {tab === 'page' && !part && <PagePanel page={page} siteUrl={siteBase} onUpdate={(patch) => setSite((s) => updatePage(s, page.id, patch))} />}
+                {tab === 'page' && !part && <PagePanel page={page} siteUrl={siteBase} fallbackDescription={site.seo?.description || site.tagline} onUpdate={(patch) => setSite((s) => updatePage(s, page.id, patch))} />}
                 {tab === 'block' && <Inspector />}
                 {tab === 'styles' && (
                   <>
@@ -792,6 +792,7 @@ export function App() {
             published={!!publishedAt}
             initial={settings}
             onRename={(name, tagline) => setSite((s) => rebuildParts({ ...s, name, tagline }))}
+            onSite={(f) => setSite(f)}
             onBrief={setBrief}
             onImport={(d) => { onImport(d); setSettings(null); }}
             onLoadSample={() => { void loadSample(); setSettings(null); }}

@@ -7,6 +7,7 @@ import { renderPage } from './wp/render';
 import { toMarkup } from './wp/markup';
 import { normalizeBlocks } from './wp/normalize';
 import { HOME_SLUG } from './wp/templates';
+import { robotsTxt, sitemapXml } from './siteMeta';
 
 function notFoundPage(site: Site): Page {
   const nodes: BlockNode[] = [
@@ -26,10 +27,18 @@ function notFoundPage(site: Site): Page {
   return { id: '404', title: 'Page not found', slug: '404', content: toMarkup(normalizeBlocks(nodes, { design: site.design })) };
 }
 
-export function publishFiles(site: Site): { pages: Record<string, string>; notFound: string } {
+/**
+ * The published files: pages, the 404 page and `files` (robots.txt, and
+ * sitemap.xml when the site's address is known). `siteUrl` is used when
+ * site.seo.url is empty (the server passes its first publish target's URL).
+ */
+export function publishFiles(site: Site, opts: { siteUrl?: string } = {}): { pages: Record<string, string>; notFound: string; files: Record<string, string> } {
+  const siteUrl = site.seo?.url || opts.siteUrl || undefined;
   const pages: Record<string, string> = {};
-  for (const p of site.pages) pages[p.slug || HOME_SLUG] = renderPage(site, p);
-  return { pages, notFound: renderPage(site, notFoundPage(site)) };
+  for (const p of site.pages) pages[p.slug || HOME_SLUG] = renderPage(site, p, { live: true, siteUrl });
+  const files: Record<string, string> = { 'robots.txt': robotsTxt(site, siteUrl) };
+  if (siteUrl) files['sitemap.xml'] = sitemapXml(site, siteUrl);
+  return { pages, notFound: renderPage(site, notFoundPage(site), { live: true, siteUrl }), files };
 }
 
 /** Cheap stable hash (FNV-1a) of the site, to tell whether there are unpublished changes. */

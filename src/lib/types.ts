@@ -47,6 +47,8 @@ export interface Page {
   slug: string; // "home" is the front page
   /** Serialized block markup — what WordPress stores in post_content. */
   content: string;
+  /** Meta description for search results and link previews; the site description when empty. */
+  description?: string;
 }
 
 export interface Site {
@@ -70,6 +72,66 @@ export interface Site {
   blockStyles?: BlockStyleDef[];
   /** Deep-merged over the theme.json generated from `design` (arrays replace). */
   themeJson?: ThemeJsonPatch;
+  /** Search & sharing: address, description, social image, favicon (src/lib/siteMeta.ts). */
+  seo?: SiteSeo;
+  /** Analytics and verification by provider id, rendered by Prepress (src/lib/siteMeta.ts). */
+  integrations?: Integrations;
+  /** Cookie banner for integrations that need consent. */
+  consent?: ConsentSettings;
+  /**
+   * The owner's own HTML for every published page. Only the editor's settings
+   * write it: never MCP, never the library (it isn't shared or imported).
+   */
+  code?: SiteCode;
+}
+
+export interface SiteSeo {
+  /** The site's public address (https://example.com), for canonical links, the sitemap and social images. */
+  url?: string;
+  /** Default meta description. */
+  description?: string;
+  /** Social sharing image (/uploads/… or https://…). */
+  image?: string;
+  /** Favicon (/uploads/… or https://…; PNG, SVG or ICO). */
+  favicon?: string;
+  /** Ask search engines not to index the site. */
+  noindex?: boolean;
+}
+
+export interface Integrations {
+  /** Google Search Console HTML-tag verification: the content="…" value. */
+  googleVerification?: string;
+  /** Bing Webmaster Tools: the msvalidate.01 content value. */
+  bingVerification?: string;
+  /** Google Analytics 4 measurement id, G-XXXXXXX. */
+  ga4?: string;
+  /** Google Tag Manager container id, GTM-XXXXXX. */
+  gtm?: string;
+  /** Plausible: the site's domain as registered there. */
+  plausible?: string;
+  /** Fathom site id. */
+  fathom?: string;
+  /** Umami Cloud website id (UUID). */
+  umami?: string;
+  /** Meta Pixel id. */
+  metaPixel?: string;
+}
+
+export interface ConsentSettings {
+  /** 'auto' (default): show the banner when something needs consent; 'off': load everything right away. */
+  mode?: 'auto' | 'off';
+  text?: string;
+  accept?: string;
+  reject?: string;
+}
+
+export interface SiteCode {
+  /** HTML placed before </head>. */
+  head?: string;
+  /** HTML placed before </body>. */
+  bodyEnd?: string;
+  /** Load this code only after the visitor accepts cookies. */
+  needsConsent?: boolean;
 }
 
 export type ThemeJsonPatch = { settings?: Record<string, unknown>; styles?: Record<string, unknown>; [k: string]: unknown };

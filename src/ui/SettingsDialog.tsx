@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Bot, CloudUpload, Database, Globe, X } from 'lucide-react';
+import { Bot, CloudUpload, Code, Database, Globe, Search, X } from 'lucide-react';
 import type { Site } from '../lib/types';
 import { DeployPanel } from './DeployPanel';
 import { McpPanel } from './McpPanel';
+import { SearchPanel, TrackingPanel } from './SiteMetaPanels';
 
-export type SettingsSection = 'general' | 'publishing' | 'ai' | 'data';
+export type SettingsSection = 'general' | 'search' | 'tracking' | 'publishing' | 'ai' | 'data';
 
 interface Props {
   site: Site;
@@ -16,6 +17,8 @@ interface Props {
   published: boolean;
   initial?: SettingsSection;
   onRename(name: string, tagline: string): void;
+  /** Change site settings (search & sharing, analytics, cookie banner, custom code). */
+  onSite(update: (s: Site) => Site): void;
   onBrief(brief: string): void;
   onImport(data: unknown): void;
   onLoadSample(): void;
@@ -24,6 +27,8 @@ interface Props {
 
 const SECTIONS: { id: SettingsSection; label: string; icon: typeof Globe; server?: boolean }[] = [
   { id: 'general', label: 'Site', icon: Globe },
+  { id: 'search', label: 'Search & sharing', icon: Search },
+  { id: 'tracking', label: 'Analytics & code', icon: Code },
   { id: 'publishing', label: 'Publishing', icon: CloudUpload, server: true },
   { id: 'ai', label: 'AI connection', icon: Bot, server: true },
   { id: 'data', label: 'Data', icon: Database },
@@ -84,6 +89,9 @@ export function SettingsDialog(p: Props) {
               </div>
             </>
           )}
+
+          {section === 'search' && <SearchPanel site={p.site} serverMode={p.serverMode} onSite={p.onSite} />}
+          {section === 'tracking' && <TrackingPanel site={p.site} onSite={p.onSite} />}
 
           {section === 'publishing' && (
             <>

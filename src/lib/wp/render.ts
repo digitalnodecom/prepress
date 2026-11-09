@@ -19,6 +19,7 @@ import { ensureBlocks } from './registry';
 import { templates, HOME_SLUG } from './templates';
 import { fillTemplate, isCustomBlock, sanitizeCss } from './customBlocks';
 import { compileBlockStyles } from './blockStyles';
+import { headMeta, liveBodyEnd, liveHead } from '../siteMeta';
 
 interface RawBlock {
   blockName: string | null;
@@ -368,6 +369,13 @@ const PREVIEW_SCRIPT = `
 export interface RenderOptions {
   markSections?: boolean;
   interactive?: boolean;
+  /**
+   * The published page: adds verification, analytics, the cookie banner and the
+   * owner's code (siteMeta.ts). Never set for the editor's canvas or previews.
+   */
+  live?: boolean;
+  /** The site's public address for canonical/og:url (publish passes the target's when site.seo.url is empty). */
+  siteUrl?: string;
 }
 
 /** Render a full HTML document for one page of the site. */
@@ -381,11 +389,12 @@ export function renderPage(site: Site, page: Page, opts: RenderOptions = {}): st
   const fonts = googleFontsUrl(site.design);
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(page.title)} – ${esc(site.name)}</title>
+${headMeta(site, page, opts.siteUrl)}
 ${fonts ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="${fonts}">` : ''}
 <style id="wp-block-library">${blockLibraryCss}</style>
 <style id="global-styles">${compileGlobalStyles(site.design, site.themeJson)}</style>
 <style id="block-styles">${compileBlockStyles(site.blockStyles)}</style>
 <style id="core-block-supports">${ctx.css.join('\n')}</style>
-<style>${PREVIEW_CSS}</style>
-</head><body class="wp-site-blocks-body"><div class="wp-site-blocks">${body}</div>${opts.interactive ? `<script>${PREVIEW_SCRIPT}</script>` : ''}</body></html>`;
+<style>${PREVIEW_CSS}</style>${opts.live ? `\n${liveHead(site)}` : ''}
+</head><body class="wp-site-blocks-body"><div class="wp-site-blocks">${body}</div>${opts.interactive ? `<script>${PREVIEW_SCRIPT}</script>` : ''}${opts.live ? `\n${liveBodyEnd(site)}` : ''}</body></html>`;
 }

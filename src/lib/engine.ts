@@ -7,6 +7,7 @@
 export * from './site';
 export * from './types';
 export { publishFiles, siteHash } from './publish';
+export { INTEGRATIONS, mergeIntegrations, mergeSeo, mergeConsent, consentNeeded } from './siteMeta';
 export * from './wp/customBlocks';
 export { cleanBlockStyle, compileBlockStyles, blockStylesUsedIn } from './wp/blockStyles';
 export { lintSite, lintSet } from './setLint';

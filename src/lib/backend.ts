@@ -120,7 +120,7 @@ export interface DeployResult {
   error?: string;
   backup?: string;
 }
-export type DeployTargetView = DeployTarget & { type: 'folder' | 'sftp' | 'ftp' | 's3' | 'prepress'; insecure?: boolean; last: DeployResult | null };
+export type DeployTargetView = DeployTarget & { type: 'folder' | 'sftp' | 'ftp' | 's3' | 'prepress' | 'cfpages' | 'github'; insecure?: boolean; last: DeployResult | null };
 
 const post = (body: unknown): RequestInit => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
@@ -142,6 +142,31 @@ export interface HostingCheck {
 }
 /** Free hosting: is <name>.prepress.digitalno.de free (or this site's already)? */
 export const checkHostingName = (name: string) => api<HostingCheck>(`/api/hosting/check?name=${encodeURIComponent(name)}`);
+
+/** Connected accounts for the GitHub Pages / Cloudflare Pages targets (server/oauth.ts). */
+export type AccountProvider = 'github' | 'cloudflare';
+export interface AccountView {
+  /** This build has the OAuth app (client id) to connect with. */
+  available: boolean;
+  connected: boolean;
+  /** GitHub login / Cloudflare e-mail. */
+  label?: string;
+  /** Cloudflare accounts the connection can publish to. */
+  accounts?: { id: string; name: string }[];
+}
+export interface DeviceStart {
+  id: string;
+  userCode: string;
+  verificationUri: string;
+  verificationUriComplete?: string;
+  expiresIn: number;
+  interval: number;
+}
+export type DevicePoll = { status: 'pending' } | { status: 'connected'; account: AccountView } | { status: 'failed'; error: string };
+export const loadAccounts = () => api<Record<AccountProvider, AccountView>>('/api/accounts', { cache: 'no-store' });
+export const connectAccount = (provider: AccountProvider) => api<DeviceStart>('/api/accounts/connect', post({ provider }));
+export const pollAccount = (provider: AccountProvider, id: string) => api<DevicePoll>('/api/accounts/poll', post({ provider, id }));
+export const disconnectAccount = (provider: AccountProvider) => api<Record<AccountProvider, AccountView>>('/api/accounts/disconnect', post({ provider }));
 
 export const loadDeploy = () => api<{ targets: DeployTargetView[]; outDir: string; publishedAt: string | null }>('/api/deploy');
 export const saveDeployTargets = (targets: DeployTarget[]) => api<{ targets: DeployTargetView[] }>('/api/deploy', { ...post({ targets }), method: 'PUT' });

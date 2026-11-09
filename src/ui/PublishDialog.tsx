@@ -13,7 +13,7 @@ interface Props {
 
 /**
  * Publish: render the site to static HTML, then upload it to the chosen
- * targets (SFTP, FTP, S3, folders). With no targets yet, it starts with the
+ * targets (Cloudflare Pages, GitHub Pages, SFTP, FTP, S3, folders). With no targets yet, it starts with the
  * connection form so the first publish goes straight to the host.
  */
 const slug = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
@@ -184,6 +184,7 @@ export function PublishDialog({ pages, siteName, onPublish, onClose }: Props) {
                   targets={targets}
                   initial={{ ...EMPTY_TARGET }}
                   saveLabel="Save target"
+                  siteSlug={slug(siteName) || undefined}
                   cancelable={targets.length > 0}
                   onDone={async (saved) => {
                     setAdding(false);
@@ -196,7 +197,7 @@ export function PublishDialog({ pages, siteName, onPublish, onClose }: Props) {
               </>
             ) : (
               <div className="row">
-                <button className="btn small ghost" disabled={busy} onClick={() => setAdding(true)}><Plus size={14} /> {targets.length ? 'Add target' : 'Use your own host (SFTP, FTP, S3, folder)'}</button>
+                <button className="btn small ghost" disabled={busy} onClick={() => setAdding(true)}><Plus size={14} /> {targets.length ? 'Add target' : 'Use Cloudflare Pages, GitHub Pages or your own host'}</button>
               </div>
             )}
 

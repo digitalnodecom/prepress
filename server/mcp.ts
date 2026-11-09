@@ -183,6 +183,11 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
         customBlocks: (site.blocks ?? []).map((b: any) => ({ name: b.name, title: b.title, attributes: Object.keys(b.attributes), usedIn: e.blockUsage(site, b.name) })),
         patterns: (site.patterns ?? []).map((p: any) => ({ id: p.id, slug: p.slug, title: p.title, synced: p.synced })),
         themeJsonPatched: !!site.themeJson,
+        seo: site.seo ?? {},
+        pageDescriptions: Object.fromEntries(site.pages.filter((p: any) => p.description).map((p: any) => [p.slug, p.description])),
+        integrations: site.integrations ?? {},
+        consent: { ...(site.consent ?? {}), bannerShown: e.consentNeeded(site) },
+        customCode: { head: !!site.code?.head, bodyEnd: !!site.code?.bodyEnd, note: 'Set by the site owner in Settings → Analytics & code; not readable or writable over MCP.' },
         deployTargets: ctx.deployTargets().map((t) => ({ name: t.name, type: t.type, url: t.url ?? null, auto: t.auto, last: t.last })), // never the connection: it may hold passwords
       };
     }, true);
@@ -252,13 +257,52 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
       }),
     );
 
-    tool('update_page', 'Rename a page or change its URL slug (menus follow).', { page: pageRef, title: z.string().optional(), slug: z.string().optional() }, ({ page, title, slug }) =>
-      change(`Updated page ${page}`, (site) => {
-        const p = findPage(site, page);
-        const next = e.updatePage(site, p.id, { title, slug });
-        const q = next.pages.find((x: any) => x.id === p.id)!;
-        return { site: next, result: { page: { id: q.id, title: q.title, slug: q.slug } } };
-      }),
+    tool(
+      'update_page',
+      'Rename a page, change its URL slug (menus follow), or set its meta description (search results and link previews, ~160 characters; "" = use the site description).',
+      { page: pageRef, title: z.string().optional(), slug: z.string().optional(), description: z.string().optional() },
+      ({ page, title, slug, description }) =>
+        change(`Updated page ${page}`, (site) => {
+          const p = findPage(site, page);
+          const next = e.updatePage(site, p.id, { title, slug, description });
+          const q = next.pages.find((x: any) => x.id === p.id)!;
+          return { site: next, result: { page: { id: q.id, title: q.title, slug: q.slug, description: q.description ?? null } } };
+        }),
+    );
+
+    tool(
+      'set_seo',
+      'Search & sharing settings for the published site: url (its public address, e.g. https://example.com; used for canonical links and sitemap.xml), description (default meta description), image (social sharing image: /uploads/… or https://…), favicon (/uploads/… PNG/ICO or https://…), noindex (true asks search engines not to index). "" clears a field.',
+      { url: z.string().optional(), description: z.string().optional(), image: z.string().optional(), favicon: z.string().optional(), noindex: z.boolean().optional() },
+      (args) =>
+        change('Changed search & sharing settings', (site) => {
+          const seo = e.mergeSeo(site.seo, args);
+          return { site: { ...site, seo }, result: { seo: seo ?? {} } };
+        }),
+    );
+
+    tool(
+      'set_integrations',
+      `Verification and analytics by provider id; Prepress writes the snippets into every published page (cookie-based ones wait for the cookie banner's consent). Give only ids, never code. "" removes one. Providers: ${e.INTEGRATIONS.map((d: any) => `${d.id} (${d.label}, e.g. ${d.placeholder})`).join('; ')}.`,
+      Object.fromEntries(e.INTEGRATIONS.map((d: any) => [d.id, z.string().optional()])),
+      (args) =>
+        change('Changed analytics & verification', (site) => {
+          const integrations = e.mergeIntegrations(site.integrations, args);
+          const next = { ...site, integrations };
+          return { site: next, result: { integrations: integrations ?? {}, cookieBanner: e.consentNeeded(next) } };
+        }),
+    );
+
+    tool(
+      'set_cookie_banner',
+      'The cookie banner shown when an integration needs consent (Google Analytics, Tag Manager, Meta Pixel). mode "off" loads everything without asking (not OK in the EU/UK for cookie-based analytics); text/accept/reject set its wording ("" = default).',
+      { mode: z.enum(['auto', 'off']).optional(), text: z.string().optional(), accept: z.string().optional(), reject: z.string().optional() },
+      (args) =>
+        change('Changed the cookie banner', (site) => {
+          const consent = e.mergeConsent(site.consent, args);
+          const next = { ...site, consent };
+          return { site: next, result: { consent: consent ?? {}, bannerShown: e.consentNeeded(next) } };
+        }),
     );
 
     tool('delete_page', 'Delete a page (not the front page).', { page: pageRef }, ({ page }) =>
@@ -489,7 +533,7 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
     // ---------- ship ----------
     tool(
       'publish_site',
-      'Render every page to static HTML, write it to the publish folder, then upload it to the publish targets marked auto (SFTP, FTP, S3, folders set up by the site owner; see get_site.deployTargets), or to the targets you name. Run validate_site first. Check each entry of "deploys" for ok/error.',
+      'Render every page to static HTML, write it to the publish folder, then upload it to the publish targets marked auto (Cloudflare Pages, GitHub Pages, SFTP, FTP, S3, folders set up by the site owner; see get_site.deployTargets), or to the targets you name. Run validate_site first. Check each entry of "deploys" for ok/error.',
       {
         deploy: z.boolean().optional().describe('false = only render to the publish folder, upload nowhere'),
         targets: z.array(z.string()).optional().describe('Target names to upload to instead of the auto ones'),
@@ -502,7 +546,7 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
 
     tool(
       'deploy_site',
-      'Upload the last published version to publish targets (SFTP, FTP, S3, folders) without re-rendering. Targets and their passwords are set by the site owner in the editor (Site tab → Publish to); see get_site.deployTargets.',
+      'Upload the last published version to publish targets (Cloudflare Pages, GitHub Pages, SFTP, FTP, S3, folders) without re-rendering. Targets and their passwords are set by the site owner in the editor (Site tab → Publish to); see get_site.deployTargets.',
       {
         target: z.string().optional().describe('Target name or id; omit for all targets'),
         full: z.boolean().optional().describe('Re-upload every file, not only changed ones'),

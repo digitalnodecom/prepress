@@ -12,6 +12,7 @@
  * (sanitized templates/CSS), design through sanitizeDesign, theme.json through
  * cleanThemeJsonPatch.
  */
+import { cleanPageDescription } from './siteMeta';
 import { parse, serialize } from '@wordpress/blocks';
 import type { BlockStyleDef, CustomBlockDef, Design, Page, PatternDef, PatternRole, Site } from './types';
 import { applyDesign, blockUsage, createPattern, defineBlock, getSections, insertSection, patchThemeJson, rebuildParts, uid } from './site';
@@ -99,8 +100,10 @@ const cleanTags = (t: unknown) => (Array.isArray(t) ? t : String(t ?? '').split(
 
 export function shareTemplate(site: Site, meta: { title?: string; description?: string; tags?: string[]; brief?: string } = {}): LibraryDraft {
   const local = (m: string) => withoutLocalMedia(m, site.design, site.blocks);
+  // This site's own address, analytics ids, cookie banner and code never travel with a template.
+  const { seo: _seo, integrations: _integrations, consent: _consent, code: _code, ...rest } = site;
   const shared: Site = {
-    ...site,
+    ...rest,
     pages: site.pages.map((p) => ({ ...p, content: local(p.content) })),
     header: local(site.header),
     footer: local(site.footer),
@@ -287,7 +290,8 @@ export function importLibraryItem(site: Site, item: Pick<LibraryItem, 'type' | '
     let slug = i === 0 ? 'home' : String(pg.slug ?? '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || `page-${i}`;
     while (seen.has(slug)) slug += '-2';
     seen.add(slug);
-    return { id: uid(), title: clean(pg.title || 'Page', 60), slug, content: cleanMarkup(pg.content, design, undefined, names) };
+    const description = cleanPageDescription(pg.description);
+    return { id: uid(), title: clean(pg.title || 'Page', 60), slug, content: cleanMarkup(pg.content, design, undefined, names), ...(description ? { description } : {}) };
   });
   const patterns: PatternDef[] = (t.patterns ?? []).slice(0, 50).map((pt) => ({
     id: Number.isInteger(pt.id) && pt.id >= 5000 ? pt.id : 5000,
