@@ -22,7 +22,8 @@ import { join } from 'node:path';
 export type Provider = 'github' | 'cloudflare';
 
 export const CLIENT_IDS: Record<Provider, string> = {
-  github: process.env.PREPRESS_GITHUB_CLIENT_ID || '',
+  // GitHub OAuth App "Prepress" (digitalnodecom), device flow enabled, no client secret.
+  github: process.env.PREPRESS_GITHUB_CLIENT_ID || 'Ov23liVcqQs6LPXg0uAN',
   cloudflare: process.env.PREPRESS_CLOUDFLARE_CLIENT_ID || '',
 };
 
