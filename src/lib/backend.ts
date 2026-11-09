@@ -156,9 +156,12 @@ export interface AccountView {
 }
 export interface DeviceStart {
   id: string;
-  userCode: string;
-  verificationUri: string;
+  /** Device flow (GitHub): the code to enter at verificationUri. */
+  userCode?: string;
+  verificationUri?: string;
   verificationUriComplete?: string;
+  /** Browser sign-in (Cloudflare): open this; it finishes when the browser comes back. */
+  authorizeUrl?: string;
   expiresIn: number;
   interval: number;
 }

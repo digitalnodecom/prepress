@@ -110,7 +110,7 @@ function AccountConnect({ provider, connection, onConnection }: { provider: Acco
     try {
       const f = await connectAccount(provider);
       setFlow(f);
-      window.open(f.verificationUriComplete ?? f.verificationUri, '_blank', 'noopener');
+      window.open(f.authorizeUrl ?? f.verificationUriComplete ?? f.verificationUri, '_blank', 'noopener');
     } catch (e: any) {
       setError(String(e?.message ?? e));
     }
@@ -130,13 +130,21 @@ function AccountConnect({ provider, connection, onConnection }: { provider: Acco
           )}
           <button className="btn small ghost" onClick={async () => setAcc((await disconnectAccount(provider))[provider])}>Disconnect</button>
         </div>
+      ) : flow?.authorizeUrl ? (
+        <div className="device-code">
+          <p className="hint">Finish signing in to {name} in your browser: pick the account(s) Prepress may publish to and authorize. This page notices when you're done.</p>
+          <div className="row">
+            <a className="btn small" href={flow.authorizeUrl} target="_blank" rel="noreferrer">Open the sign-in again <ExternalLink size={14} /></a>
+            <button className="btn small ghost" onClick={() => setFlow(null)}>Cancel</button>
+          </div>
+        </div>
       ) : flow ? (
         <div className="device-code">
-          <p className="hint">Enter this code on {new URL(flow.verificationUri).host} and approve Prepress. This page notices when you're done.</p>
+          <p className="hint">Enter this code on {new URL(flow.verificationUri!).host} and approve Prepress. This page notices when you're done.</p>
           <div className="row">
             <span className="mono device-code-value">{flow.userCode}</span>
-            <button className="btn small ghost" onClick={() => { void navigator.clipboard?.writeText(flow.userCode); setCopied(true); }}><Copy size={14} /> {copied ? 'Copied' : 'Copy'}</button>
-            <a className="btn small" href={flow.verificationUriComplete ?? flow.verificationUri} target="_blank" rel="noreferrer">Open {new URL(flow.verificationUri).host} <ExternalLink size={14} /></a>
+            <button className="btn small ghost" onClick={() => { void navigator.clipboard?.writeText(flow.userCode ?? ""); setCopied(true); }}><Copy size={14} /> {copied ? 'Copied' : 'Copy'}</button>
+            <a className="btn small" href={flow.verificationUriComplete ?? flow.verificationUri} target="_blank" rel="noreferrer">Open {new URL(flow.verificationUri!).host} <ExternalLink size={14} /></a>
             <button className="btn small ghost" onClick={() => setFlow(null)}>Cancel</button>
           </div>
         </div>

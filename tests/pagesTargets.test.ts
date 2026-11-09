@@ -11,7 +11,7 @@ import { MASK, formatConnection, parseConnection } from '../server/targets/conne
 import { rebase } from '../server/targets/site';
 import { pagesHash } from '../server/targets/cfpages';
 import { gitBlobSha } from '../server/targets/github';
-import { accountToken, accountsView, pollDeviceFlow, startDeviceFlow } from '../server/oauth';
+import { accountToken, accountsView, pollDeviceFlow, startDeviceFlow, stopCallbackListener } from '../server/oauth';
 
 const CF_ACCOUNT = '0123456789abcdef0123456789abcdef';
 
@@ -377,6 +377,48 @@ describe('connected accounts (device flow)', () => {
   test('refuses a verification address on another host', async () => {
     const o = { dataDir: data, clientIds: { github: 'gh-client' }, fetch: fakeFetch(() => ({ json: { device_code: 'd', user_code: 'U', verification_uri: 'https://github.com.evil.example/login/device', expires_in: 600 } })) };
     await expect(startDeviceFlow('github', o)).rejects.toThrow(/Unexpected verification address/);
+  });
+
+  test('Cloudflare: browser sign-in with PKCE, back through the localhost listener', async () => {
+    const port = 47_900 + Math.floor(Math.random() * 90);
+    let challenge = '';
+    const handle: Handler = (req) => {
+      if (req.path === '/oauth2/token') {
+        expect(req.body).toMatchObject({ grant_type: 'authorization_code', code: 'the-code', client_id: 'cf-client', redirect_uri: `http://localhost:${port}/oauth/cloudflare/callback` });
+        expect(createHash('sha256').update(req.body.code_verifier).digest('base64url')).toBe(challenge);
+        return { json: { access_token: 'cf-access', refresh_token: 'cf-refresh', expires_in: 3600, scope: 'offline_access' } };
+      }
+      if (req.path === '/client/v4/user') return { json: { success: true, result: { email: 'tj@example.com' } } };
+      if (req.path.startsWith('/client/v4/accounts')) return { json: { success: true, result: [{ id: CF_ACCOUNT, name: 'Studio' }] } };
+      return undefined;
+    };
+    const o = { dataDir: data, fetch: fakeFetch(handle), clientIds: { cloudflare: 'cf-client' }, callbackPort: port };
+    try {
+      const start = await startDeviceFlow('cloudflare', o);
+      const auth = new URL(start.authorizeUrl!);
+      expect(auth.origin + auth.pathname).toBe('https://dash.cloudflare.com/oauth2/auth');
+      expect(auth.searchParams.get('code_challenge_method')).toBe('S256');
+      challenge = auth.searchParams.get('code_challenge')!;
+      const state = auth.searchParams.get('state')!;
+      expect(await pollDeviceFlow('cloudflare', start.id, o)).toEqual({ status: 'pending' });
+
+      // A redirect with someone else's state is turned away; the real one connects.
+      const bad = await fetch(`http://127.0.0.1:${port}/oauth/cloudflare/callback?code=x&state=forged`);
+      expect(bad.status).toBe(400);
+      const ok = await fetch(`http://127.0.0.1:${port}/oauth/cloudflare/callback?code=the-code&state=${state}`);
+      expect(ok.status).toBe(200);
+      expect(await ok.text()).toContain('Connected to Cloudflare');
+      expect(await pollDeviceFlow('cloudflare', start.id, o)).toEqual({ status: 'connected', account: { available: true, connected: true, label: 'tj@example.com', accounts: [{ id: CF_ACCOUNT, name: 'Studio' }] } });
+      expect(JSON.parse(readFileSync(join(data, 'accounts.json'), 'utf8')).cloudflare).toMatchObject({ accessToken: 'cf-access', refreshToken: 'cf-refresh' });
+
+      // Declined on Cloudflare's page.
+      const again = await startDeviceFlow('cloudflare', o);
+      const st = new URL(again.authorizeUrl!).searchParams.get('state')!;
+      expect((await fetch(`http://127.0.0.1:${port}/oauth/cloudflare/callback?error=access_denied&state=${st}`)).status).toBe(400);
+      expect(await pollDeviceFlow('cloudflare', again.id, o)).toEqual({ status: 'failed', error: 'Access was denied.' });
+    } finally {
+      await stopCallbackListener();
+    }
   });
 
   test('Cloudflare: no client id → not available; expired tokens are refreshed', async () => {
