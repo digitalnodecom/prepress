@@ -40,7 +40,8 @@ function client(t: DeployTarget, o: Opts) {
     } catch (e: any) {
       throw new Error(`Can't reach GitHub: ${e?.cause?.code ?? e?.message ?? e}`);
     }
-    const j: any = r.status === 204 ? {} : await r.json().catch(() => ({}));
+    // Some answers have no body, or a literal `null` one.
+    const j: any = (r.status === 204 ? null : await r.json().catch(() => null)) ?? {};
     if (!r.ok) {
       const msg = j.message ?? `HTTP ${r.status}`;
       throw Object.assign(new Error(r.status === 401 ? `GitHub refused the token (${msg}). Connect again or use a new token.` : `GitHub: ${msg}`), { status: r.status });
@@ -133,9 +134,12 @@ export async function publishGithub(t: DeployTarget, files: Map<string, Buffer>,
   }
 
   if (!pages) {
-    pages = await c
-      .call(`${rp}/pages`, 'POST', { build_type: 'legacy', source: { branch, path: '/' } })
-      .catch((e) => (e.status === 409 ? c.call(`${rp}/pages`) : Promise.reject(e)));
+    // GitHub often switches Pages on by itself when a gh-pages branch appears; then the POST conflicts.
+    pages = await c.call(`${rp}/pages`, 'POST', { build_type: 'legacy', source: { branch, path: '/' } }).catch(async (e) => {
+      const now = await c.maybe(`${rp}/pages`).catch(() => null);
+      if (now?.html_url) return now;
+      throw e;
+    });
   }
 
   const siteFiles = changed.filter(([rel]) => rel !== '.nojekyll').length;

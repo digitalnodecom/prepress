@@ -308,6 +308,21 @@ describe('GitHub Pages', () => {
     expect(gh.branch('octo/octo.github.io', 'gh-pages')!['index.html']).toBe(PAGE('Home'));
   });
 
+  test('Pages switched on by GitHub itself (POST conflicts with a null body) is fine', async () => {
+    const gh = fakeGithub();
+    const handle: Handler = (req) => {
+      if (req.method === 'POST' && req.path === '/repos/octo/site/pages') {
+        gh.repos.get('octo/site')!.pages = { html_url: 'https://octo.github.io/site/', build_type: 'legacy', source: { branch: 'gh-pages', path: '/' } };
+        return { status: 409, json: null };
+      }
+      return gh.handle(req);
+    };
+    const d = createDeployer({ dataDir: data, outDir: out, accounts: { fetch: fakeFetch(handle) } });
+    const [saved] = d.save([{ connection: 'github://gh-token@octo/site' }]);
+    const [r] = await d.deploy(site({ 'index.html': PAGE('Home') }), saved.id);
+    expect(r).toMatchObject({ ok: true, uploaded: 1, url: 'https://octo.github.io/site' });
+  });
+
   test('refuses a repository whose Pages are built by Actions, before pushing', async () => {
     const gh = fakeGithub();
     const d = createDeployer({ dataDir: data, outDir: out, accounts: { fetch: fakeFetch(gh.handle) } });
