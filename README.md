@@ -1,4 +1,7 @@
-# Prepress
+<p align="center"><img src="desktop/src-tauri/icons/128x128@2x.png" width="112" height="112" alt="Prepress logo"></p>
+<h1 align="center">Prepress</h1>
+<p align="center">Build websites with the real WordPress block editor, on your own computer.<br>
+<a href="https://github.com/digitalnodecom/prepress/releases/latest/download/Prepress-mac-arm64.dmg"><b>Download for Mac</b></a> (Apple silicon) · <a href="https://github.com/digitalnodecom/prepress/releases">Releases</a> · <a href="https://prepress.digitalno.de">prepress.digitalno.de</a> · <a href="https://prepress.digitalno.de/library">Library</a></p>
 
 > Picking this up? Read **[HANDOFF.md](HANDOFF.md)** first.
 

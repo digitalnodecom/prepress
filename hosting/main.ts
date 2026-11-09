@@ -32,7 +32,7 @@ const handle = createHostingApi({
   secretAccessKey: env('S3_SECRET_KEY'),
   maxSiteBytes: Number(process.env.HOSTING_MAX_SITE_MB ?? 250) * 1024 * 1024,
   maxFileBytes: Number(process.env.HOSTING_MAX_FILE_MB ?? 25) * 1024 * 1024,
-  downloadMac: process.env.DOWNLOAD_MAC_URL || undefined,
+  downloadMac: process.env.DOWNLOAD_MAC_URL || 'https://github.com/digitalnodecom/prepress/releases/latest/download/Prepress-mac-arm64.dmg',
   webUrl: process.env.WEB_URL || undefined,
   adminToken: process.env.LIBRARY_ADMIN_TOKEN || undefined,
 });

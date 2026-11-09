@@ -94,7 +94,8 @@ const latest = {
   platforms: {
     [`darwin-${arch}`]: {
       signature: readFileSync(`${tarball}.sig`, 'utf8'),
-      url: `https://prepress.s3.fr-par.scw.cloud/_downloads/Prepress-${version}-mac-${arch === 'aarch64' ? 'arm64' : 'x64'}.app.tar.gz`,
+      // The asset scripts/release-desktop.ts attaches to the GitHub release v<version>.
+      url: `https://github.com/digitalnodecom/prepress/releases/download/v${version}/Prepress-${version}-mac-${arch === 'aarch64' ? 'arm64' : 'x64'}.app.tar.gz`,
     },
   },
 };
