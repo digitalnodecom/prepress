@@ -7,3 +7,7 @@ bin/
 .DS_Store
 .claude/settings.local.json
 .taste-skill/
+
+# Local secrets (bun loads .env automatically)
+.env
+.env.*
