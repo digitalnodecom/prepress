@@ -1,6 +1,6 @@
 {
   "name": "prepress",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Build a website in the WordPress block editor, serve it, export it to WordPress.",
   "scripts": {
     "test": "vitest run",
