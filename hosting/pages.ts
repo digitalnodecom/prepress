@@ -9,6 +9,8 @@ export interface PageConfig {
   domain: string;
   /** Desktop app download (macOS), if published. */
   downloadMac?: string;
+  /** Its version, from the updater's latest.json next to it ("0.7.0"). */
+  macVersion?: string;
   /** Hosted web version, once it exists. */
   webUrl?: string;
 }
@@ -38,6 +40,7 @@ a{color:inherit}main{max-width:1080px;margin:0 auto;padding:56px 20px 40px}
 .card{display:flex;flex-direction:column;gap:8px;padding:22px;border:1px solid var(--line);border-radius:14px;background:var(--card);text-decoration:none}
 a.card:hover{border-color:var(--accent)}.card .ic{color:var(--accent)}.card h2{font-size:18px;margin:4px 0 0}.card p{margin:0;color:var(--fg2);font-size:15px;flex:1}
 .card .go{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:var(--accent);font-size:15px}.card .soon{color:var(--fg3);font-weight:500;font-size:14px}
+.ver{font-weight:500;color:var(--fg3);font-size:13px;font-variant-numeric:tabular-nums}
 .note{margin:40px auto 0;max-width:640px;text-align:center;color:var(--fg3);font-size:14px}
 .top{display:flex;align-items:center;gap:8px;margin-bottom:24px}.top>a{text-decoration:none;display:flex;align-items:center;gap:10px;font-weight:700}.top .meta a{text-decoration:none}.top svg{width:26px;height:26px}
 .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 20px}.bar a{padding:6px 12px;border-radius:999px;border:1px solid var(--line);text-decoration:none;font-size:14px;color:var(--fg2);background:var(--card)}.bar a.on{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
@@ -63,7 +66,7 @@ export function homePage(cfg: PageConfig, libraryCount: number): string {
     ? `<a class="card" href="${esc(cfg.webUrl)}">${icon('globe')}<h2>Web version</h2><p>Open Prepress in your browser. Nothing to install.</p><span class="go">Open ${icon('arrow', 16)}</span></a>`
     : `<div class="card">${icon('globe')}<h2>Web version</h2><p>Prepress in your browser, nothing to install.</p><span class="soon">Coming soon</span></div>`;
   const desktop = cfg.downloadMac
-    ? `<a class="card" href="${esc(cfg.downloadMac)}">${icon('download')}<h2>Desktop app</h2><p>Prepress for macOS (Apple silicon). Sites are folders on your computer; publish when you're ready.</p><span class="go">Download for Mac ${icon('arrow', 16)}</span></a>`
+    ? `<a class="card" href="${esc(cfg.downloadMac)}">${icon('download')}<h2>Desktop app</h2><p>Prepress for macOS (Apple silicon). Sites are folders on your computer; publish when you're ready.</p><span class="go">Download for Mac${cfg.macVersion ? ` <span class="ver">v${esc(cfg.macVersion)}</span>` : ''} ${icon('arrow', 16)}</span></a>`
     : `<div class="card">${icon('download')}<h2>Desktop app</h2><p>Prepress for your computer.</p><span class="soon">Coming soon</span></div>`;
   return page(
     'Prepress — build websites with the WordPress block editor',
