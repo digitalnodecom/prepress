@@ -1,6 +1,6 @@
 [package]
 name = "prepress-desktop"
-version = "0.7.2"
+version = "0.7.3"
 description = "Prepress desktop app: the Prepress editor in a native window"
 edition = "2021"
 publish = false
