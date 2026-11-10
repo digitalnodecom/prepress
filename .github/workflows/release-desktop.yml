@@ -1,6 +1,6 @@
 # Desktop release, hands-off: when the version in desktop/src-tauri/tauri.conf.json changes on
 # main (or on a manual run), and there's no published GitHub release v<version> yet, build the
-# macOS app on an Apple silicon runner, sign it with the Developer ID certificate, notarize it with
+# macOS app on an Apple silicon runner (macos-15), sign it with the Developer ID certificate, notarize it with
 # an App Store Connect API key (no Apple ID login), sign the updater bundle, and publish the
 # release with scripts/release-desktop.ts (draft → assets read back → published).
 #
@@ -34,7 +34,7 @@ jobs:
       version: ${{ steps.v.outputs.version }}
       release: ${{ steps.v.outputs.release }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - id: v
         env:
           GH_TOKEN: ${{ github.token }}
@@ -52,7 +52,7 @@ jobs:
   release:
     needs: check
     if: needs.check.outputs.release == 'true'
-    runs-on: macos-14
+    runs-on: macos-15
     environment: release
     permissions:
       contents: write
@@ -61,11 +61,11 @@ jobs:
       APPLE_SIGNING_IDENTITY: 'Developer ID Application: AMPLIFY2 OY (A4XZSTY453)'
       PREPRESS_NOTARY_PROFILE: prepress-notary
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
           cache: npm
