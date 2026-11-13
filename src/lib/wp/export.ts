@@ -201,7 +201,7 @@ function nowdoc(html: string) {
 
 /** inc/site-code.php: siteMeta.ts's live head/body parts on wp_head / wp_footer, or '' when there are none. */
 function siteCodePhp(site: Site, fn: string): string {
-  const head = liveHead(site);
+  const head = liveHead(site, { source: false });
   const foot = liveBodyEnd(site);
   if (!head && !foot) return '';
   return `<?php

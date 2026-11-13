@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BadgeCheck } from 'lucide-react';
+import { BadgeCheck, Globe } from 'lucide-react';
 import { STARTERS, buildStarter } from '../lib/starters';
 import { renderPage } from '../lib/wp/render';
 import { libraryList, type LibraryList } from '../lib/backend';
@@ -13,6 +13,8 @@ interface Props {
   onStarter(id: string, name: string, about: string): void;
   /** Start from an official library template (fetched and imported by the caller). */
   onLibraryTemplate(id: string, title: string, name: string, about: string): void;
+  /** Open a published Prepress site by its address (server only); resolves when done, rejects with a message. */
+  onOpenPublished?(url: string, name: string, about: string): Promise<void>;
 }
 
 /** Choices: a built-in starter id, or `lib:<id>` for a library template. */
@@ -39,10 +41,25 @@ function Thumb({ id }: { id: string }) {
   );
 }
 
-export function NewSiteDialog({ defaultName, replaces, onClose, onStarter, onLibraryTemplate }: Props) {
+export function NewSiteDialog({ defaultName, replaces, onClose, onStarter, onLibraryTemplate, onOpenPublished }: Props) {
   const [chosen, setChosen] = useState(STARTERS[0].id);
   const [name, setName] = useState(defaultName ?? '');
   const [about, setAbout] = useState('');
+  const [address, setAddress] = useState('');
+  const [opening, setOpening] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const openPublished = async () => {
+    if (!onOpenPublished || !address.trim()) return;
+    setOpening(true);
+    setOpenError(null);
+    try {
+      await onOpenPublished(address.trim(), name.trim(), about.trim());
+    } catch (e: any) {
+      setOpenError(String(e?.message ?? e));
+    } finally {
+      setOpening(false);
+    }
+  };
   // Official templates from the library; stays null (section hidden) when offline or without a server.
   const [official, setOfficial] = useState<LibraryList | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -134,6 +151,16 @@ export function NewSiteDialog({ defaultName, replaces, onClose, onStarter, onLib
             </button>
           ))}
         </div>
+        {onOpenPublished && (
+          <>
+            <h3 className="starter-section"><Globe size={15} /> From a published site <span className="hint-inline">any site published with Prepress: its pages, design and blocks, as a copy you can edit</span></h3>
+            <div className="row nowrap">
+              <input className="input mono grow" value={address} placeholder="https://example.com" spellCheck={false} autoCapitalize="off" aria-label="Published site address" onChange={(e) => setAddress(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void openPublished()} />
+              <button className="btn" disabled={opening || !address.trim()} onClick={() => void openPublished()}>{opening ? 'Opening…' : 'Open'}</button>
+            </div>
+            {openError && <p className="deploy-status bad">{openError}</p>}
+          </>
+        )}
         <div className="row end">
           {replaces && <span className="hint grow">This replaces the site on screen (undo brings it back).</span>}
           <button className="btn ghost" onClick={onClose}>Cancel</button>

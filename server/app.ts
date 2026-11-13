@@ -35,6 +35,8 @@ import { join, extname, basename, dirname, resolve, sep } from 'node:path';
 import { ConflictError, DraftStore, withFileLock } from './store.ts';
 import { createMcpHandler } from './mcp.ts';
 import { createDeployer } from './deploy.ts';
+import { VERSION } from './version.ts';
+import { absoluteMedia, fetchPublishedSource } from './openSite.ts';
 import { createClients } from './clients.ts';
 import { HOSTING_DOMAIN, checkName } from './targets/prepress.ts';
 import { accountsView, disconnect, pollDeviceFlow, startDeviceFlow, type OAuthOptions, type Provider } from './oauth.ts';
@@ -182,7 +184,7 @@ export function createSiteCore(opts: CoreOptions) {
     const files: [string, Buffer | string][] = [];
     for (const [slug, html] of Object.entries(pages)) files.push([slug === 'home' ? 'index.html' : `${slug}/index.html`, String(html)]);
     if (typeof notFound === 'string') files.push(['404.html', notFound]);
-    for (const [rel, text] of Object.entries(extra)) if (rel === 'robots.txt' || rel === 'sitemap.xml') files.push([rel, text]);
+    for (const [rel, text] of Object.entries(extra)) if (rel === 'robots.txt' || rel === 'sitemap.xml' || rel === 'prepress.json') files.push([rel, text]);
     for (const f of readdirSync(uploadsDir)) {
       if (UPLOAD_EXT.has(extname(f).toLowerCase())) files.push([`uploads/${f}`, readFileSync(join(uploadsDir, f))]);
     }
@@ -232,7 +234,7 @@ export function createSiteCore(opts: CoreOptions) {
     // Canonical links and the sitemap need the public address: the site's own, else the first target that has one.
     const targets = deployer.view();
     const fallbackUrl = (targets.find((t) => t.auto && t.url) ?? targets.find((t) => t.url))?.url;
-    const { pages, notFound, files: extra } = engine.publishFiles(draft.site, { siteUrl: fallbackUrl });
+    const { pages, notFound, files: extra } = engine.publishFiles(draft.site, { siteUrl: fallbackUrl, generator: `Prepress ${VERSION}` });
     const files = writeStatic(pages, notFound, readManifest().files, extra);
     const publishedAt = new Date().toISOString();
     writeAtomic(manifestFile, JSON.stringify({ publishedAt, outDir, files, by }));
@@ -459,6 +461,39 @@ export function createHandler(opts: ServerOptions) {
         return json(res, 502, { error: String(e?.message ?? e) });
       }
     }
+    if (route === 'POST /api/open-published') {
+      // Start a site from a published Prepress site's /prepress.json (server/openSite.ts). Untrusted input.
+      const engine = opts.engine;
+      if (!engine) return json(res, 501, { error: 'Not available without the server engine' });
+      const { url: address } = (await readJson(req)) ?? {};
+      try {
+        const src = await fetchPublishedSource(String(address ?? '').slice(0, 2000), { fetch: opts.mediaImport?.fetch, resolve: opts.mediaImport?.resolve });
+        const raw = absoluteMedia(src.site, src.root);
+        const current = store.read()?.site;
+        const r = engine.importLibraryItem(current?.pages?.length ? current : engine.buildStarter('blank').site, { type: 'template', title: String(raw.name ?? 'Site').slice(0, 80), payload: { template: { site: raw } } } as any);
+        let site: any = r.site;
+        // Search & sharing describe the content, so they come along; the address belongs to the original site.
+        try {
+          const seo = engine.mergeSeo(undefined, { description: raw.seo?.description, image: raw.seo?.image, favicon: raw.seo?.favicon, noindex: raw.seo?.noindex === true || undefined });
+          if (seo) site = { ...site, seo };
+        } catch {
+          /* bad values are dropped */
+        }
+        const loc = await localizeMedia(site);
+        site = loc.site;
+        for (const k of ['image', 'favicon'] as const) {
+          const u = site.seo?.[k];
+          if (u && /^https?:/.test(u)) {
+            const got = await importer.import(u).catch(() => null);
+            site = { ...site, seo: { ...site.seo, [k]: got?.url } };
+            if (!got) delete site.seo[k];
+          }
+        }
+        return json(res, 200, { site, source: src.source, generator: src.generator ?? null, media: { imported: loc.imported.length, failed: loc.failed.length } });
+      } catch (e: any) {
+        return json(res, 400, { error: String(e?.message ?? e) });
+      }
+    }
     if (route === 'GET /api/accounts') {
       // Connected GitHub / Cloudflare accounts for publish targets (never the tokens).
       return json(res, 200, accountsView({ ...opts.accounts, dataDir: dir }));
@@ -514,8 +549,9 @@ export function createHandler(opts: ServerOptions) {
     // origin), so nothing on them can use this server's API the way the editor on the same host can.
     const headers = { 'cache-control': 'no-cache', 'content-security-policy': 'sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads' };
     const owned = new Set(readManifest().files);
-    if ((path === 'robots.txt' || path === 'sitemap.xml') && owned.has(path) && existsSync(join(outDir, path))) {
-      return send(res, 200, readFileSync(join(outDir, path)), path.endsWith('.xml') ? 'application/xml; charset=utf-8' : 'text/plain; charset=utf-8', headers);
+    if ((path === 'robots.txt' || path === 'sitemap.xml' || path === 'prepress.json') && owned.has(path) && existsSync(join(outDir, path))) {
+      const type = path.endsWith('.xml') ? 'application/xml; charset=utf-8' : path.endsWith('.json') ? 'application/json; charset=utf-8' : 'text/plain; charset=utf-8';
+      return send(res, 200, readFileSync(join(outDir, path)), type, headers);
     }
     const rel = path === '' ? 'index.html' : SLUG.test(path) ? `${path}/index.html` : null;
     if (rel && owned.has(rel) && existsSync(join(outDir, rel))) {

@@ -257,9 +257,12 @@ export function consentNeeded(site: Site): boolean {
 const gated = (html: string, gate: boolean) => (gate ? `<template data-pp-consent>${html}</template>` : html);
 
 /** The live-only part of <head>: verification, analytics, the owner's head code. */
-export function liveHead(site: Site): string {
+export function liveHead(site: Site, opts: { source?: boolean } = {}): string {
   const banner = consentNeeded(site);
-  const out = validIntegrations(site.integrations).map(([d, v]) => gated(d.head(v), banner && d.consent));
+  // Marks the page as a Prepress site and points at its source (publish writes /prepress.json;
+  // the WordPress export has none, so it passes source: false).
+  const out = opts.source === false ? [] : [`<meta name="generator" content="Prepress">`, `<link rel="alternate" type="${SOURCE_TYPE}" href="/${SOURCE_FILE}" title="Prepress source">`];
+  out.push(...validIntegrations(site.integrations).map(([d, v]) => gated(d.head(v), banner && d.consent)));
   if (site.code?.head) out.push(gated(site.code.head, banner && !!site.code.needsConsent));
   return out.join('\n');
 }
@@ -296,4 +299,42 @@ export function sitemapXml(site: Site, siteUrl: string): string {
 export function robotsTxt(site: Site, siteUrl?: string): string {
   if (site.seo?.noindex) return 'User-agent: *\nDisallow: /\n';
   return `User-agent: *\nAllow: /\n${siteUrl ? `\nSitemap: ${siteUrl.replace(/\/+$/, '')}/sitemap.xml\n` : ''}`;
+}
+
+// ---------- the published source (prepress.json) ----------
+
+export const SOURCE_FILE = 'prepress.json';
+export const SOURCE_TYPE = 'application/vnd.prepress+json';
+export const SOURCE_FORMAT = 'prepress/site@1';
+
+/**
+ * What /prepress.json carries: the site's content and design, so the site can be opened in
+ * Prepress again from its address. An allowlist, not a copy: anything not named here never goes
+ * out, including fields added to Site later. Publish targets, passwords, tokens and the hosting
+ * token live outside Site and never come near this; the owner's raw code and analytics ids are
+ * left out too (a copy shouldn't carry them).
+ */
+export function publicSite(site: Site): Partial<Site> {
+  const out: Partial<Site> = {
+    name: site.name,
+    tagline: site.tagline,
+    design: site.design,
+    pages: site.pages.map((p) => ({ id: p.id, title: p.title, slug: p.slug, content: p.content, ...(p.description ? { description: p.description } : {}) })),
+    header: site.header,
+    footer: site.footer,
+  };
+  if (site.custom) out.custom = { header: !!site.custom.header, footer: !!site.custom.footer };
+  if (site.blocks?.length) out.blocks = site.blocks;
+  if (site.patterns?.length) out.patterns = site.patterns;
+  if (site.blockStyles?.length) out.blockStyles = site.blockStyles;
+  if (site.themeJson) out.themeJson = site.themeJson;
+  if (site.seo) {
+    const { description, image, favicon, noindex, url } = site.seo;
+    out.seo = { ...(url ? { url } : {}), ...(description ? { description } : {}), ...(image ? { image } : {}), ...(favicon ? { favicon } : {}), ...(noindex ? { noindex } : {}) };
+  }
+  return out;
+}
+
+export function sourceJson(site: Site, generator = 'Prepress'): string {
+  return JSON.stringify({ format: SOURCE_FORMAT, generator, site: publicSite(site) });
 }

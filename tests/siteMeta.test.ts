@@ -106,7 +106,7 @@ describe('published pages', () => {
     // No address of its own: the publish target's is used; none at all: robots only.
     const bare = { ...demo };
     expect(publishFiles(bare, { siteUrl: 'https://bakery.pages.dev' }).files['sitemap.xml']).toContain('<loc>https://bakery.pages.dev/</loc>');
-    expect(Object.keys(publishFiles(bare).files)).toEqual(['robots.txt']);
+    expect(Object.keys(publishFiles(bare).files).sort()).toEqual(['prepress.json', 'robots.txt']);
     expect(publishFiles({ ...s, seo: { ...s.seo, noindex: true } }).files['robots.txt']).toBe('User-agent: *\nDisallow: /\n');
   });
 });

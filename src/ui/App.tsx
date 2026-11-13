@@ -11,7 +11,8 @@ import {
 import { validateMarkup } from '../lib/wp/markup';
 import { pageUrl, renderPage } from '../lib/wp/render';
 import { exportSite } from '../lib/wp/export';
-import { connectBackend, libraryGet, loadDraft, publish, saveDraft, siteHash, subscribeChanges, type Backend, type Draft } from '../lib/backend';
+import { connectBackend, libraryGet,
+  openPublishedSite, loadDraft, publish, saveDraft, siteHash, subscribeChanges, type Backend, type Draft } from '../lib/backend';
 import { registerCustomBlocks } from '../lib/wp/customBlocks';
 import { Preview, type Device } from './Preview';
 import { DesignPanel } from './DesignPanel';
@@ -334,6 +335,28 @@ export function App() {
     } catch (e: any) {
       setError(`Couldn’t load the template: ${String(e?.message ?? e)}`);
     }
+  }
+
+  /** New site from a published Prepress site (server fetches, cleans and copies the images). */
+  async function startFromPublished(url: string, name: string, about: string) {
+    const r = await openPublishedSite(url);
+    const cur = siteRef.current;
+    const s = name ? rebuildParts({ ...r.site, name }) : r.site;
+    const host = new URL(r.source).host;
+    if (cur && !isSample) {
+      past.current.push(cur);
+      future.current = [];
+    }
+    setDialog(false);
+    sampleBase.current = null;
+    setSiteState(s);
+    setBrief(about ? `${about}\n\nStarted from a copy of ${host}.` : `A copy of the Prepress site at ${host}.`);
+    setIsSample(false);
+    setPageId(s.pages[0].id);
+    setPartTarget(null);
+    setPatternId(null);
+    setSelected(null);
+    flash(`Opened a copy of ${host}${r.media.imported ? ` with ${r.media.imported} images` : ''}${r.media.failed ? ` (${r.media.failed} images couldn't be copied)` : ''}. Analytics and custom code aren't copied.`);
   }
 
   const onAddPage = (title: string) => {
@@ -740,6 +763,7 @@ export function App() {
             onClose={() => setDialog(false)}
             onStarter={(id, name, about) => startFrom(id, name, about)}
             onLibraryTemplate={(id, title, name, about) => void startFromLibrary(id, title, name, about)}
+            onOpenPublished={backend?.kind === 'server' ? startFromPublished : undefined}
           />
         )}
         {libraryOpen && (

@@ -60,7 +60,7 @@ export function isPrivateAddress(ip: string): boolean {
   return /^(fc|fd|fe8|fe9|fea|feb|ff)/.test(v);
 }
 
-async function assertPublic(url: URL, resolve: (host: string) => Promise<string[]>) {
+export async function assertPublic(url: URL, resolve: (host: string) => Promise<string[]>) {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('Only http(s) links can be imported');
   if (url.username || url.password) throw new Error('Links with a user name or password are not imported');
   const host = url.hostname.replace(/^\[|\]$/g, '');
@@ -70,7 +70,7 @@ async function assertPublic(url: URL, resolve: (host: string) => Promise<string[
   if (!addrs.length || addrs.some(isPrivateAddress)) throw new Error(`${host} is a local or private address; only public web files are imported`);
 }
 
-const defaultResolve = async (host: string) => (await lookup(host, { all: true })).map((a) => a.address);
+export const defaultResolve = async (host: string) => (await lookup(host, { all: true })).map((a) => a.address);
 
 export interface ImportResult {
   /** Local URL, e.g. /uploads/photo-1a2b3c4d.jpg */

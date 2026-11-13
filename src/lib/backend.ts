@@ -171,6 +171,10 @@ export const connectAccount = (provider: AccountProvider) => api<DeviceStart>('/
 export const pollAccount = (provider: AccountProvider, id: string) => api<DevicePoll>('/api/accounts/poll', post({ provider, id }));
 export const disconnectAccount = (provider: AccountProvider) => api<Record<AccountProvider, AccountView>>('/api/accounts/disconnect', post({ provider }));
 
+/** Start from a published Prepress site (its /prepress.json), cleaned like a library template, images copied in. */
+export const openPublishedSite = (url: string) =>
+  api<{ site: import('./types').Site; source: string; generator: string | null; media: { imported: number; failed: number } }>('/api/open-published', post({ url }));
+
 export const loadDeploy = () => api<{ targets: DeployTargetView[]; outDir: string; publishedAt: string | null }>('/api/deploy');
 export const saveDeployTargets = (targets: DeployTarget[]) => api<{ targets: DeployTargetView[] }>('/api/deploy', { ...post({ targets }), method: 'PUT' });
 export const testDeployTarget = (target: DeployTarget) => api<{ ok: boolean; message: string }>('/api/deploy/test', post({ target }));
