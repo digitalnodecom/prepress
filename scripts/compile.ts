@@ -17,7 +17,7 @@ const DIRNAME_READ = /\bfs\.readFileSync\(\s*path\.resolve\(\s*__dirname\s*,\s*(
 const staticRequires: BunPlugin = {
   name: 'static-node-modules',
   setup(build) {
-    build.onLoad({ filter: /node_modules\/.*\.(m?js)$/ }, async ({ path }) => {
+    build.onLoad({ filter: /node_modules[\\/].*\.(m?js)$/ }, async ({ path }) => {
       let src = await Bun.file(path).text();
       const before = src;
       src = src
@@ -37,7 +37,7 @@ const staticRequires: BunPlugin = {
   },
 };
 
-const [outfile = 'bin/prepress', target] = process.argv.slice(2);
+const [outfile = process.platform === 'win32' ? 'bin/prepress.exe' : 'bin/prepress', target] = process.argv.slice(2);
 const result = await Bun.build({
   entrypoints: [process.env.ENTRY ?? 'server/main.ts'],
   minify: true,

@@ -12,7 +12,8 @@ for (const f of ['dist/index.html', 'dist/engine/engine.js']) {
 }
 const TARGETS = ['darwin-arm64', 'darwin-x64', 'linux-x64', 'linux-arm64', 'windows-x64'];
 const all = process.argv.includes('--all');
-const jobs = all ? TARGETS.map((t) => ({ target: `bun-${t}`, out: `bin/prepress-${t}${t.startsWith('windows') ? '.exe' : ''}` })) : [{ target: null, out: 'bin/prepress' }];
+const jobs = all ? TARGETS.map((t) => ({ target: `bun-${t}`, out: `bin/prepress-${t}${t.startsWith('windows') ? '.exe' : ''}` })) : [{ target: null, out: process.platform === 'win32' ? 'bin/prepress.exe' : 'bin/prepress' }];
 for (const { target, out } of jobs) {
-  execFileSync('npx', ['bun', 'scripts/compile.ts', out, ...(target ? [target] : [])], { stdio: 'inherit' });
+  // npx is npx.cmd on Windows, which only runs through a shell.
+  execFileSync('npx', ['bun', 'scripts/compile.ts', out, ...(target ? [target] : [])], { stdio: 'inherit', shell: process.platform === 'win32' });
 }

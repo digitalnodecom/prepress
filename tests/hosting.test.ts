@@ -205,24 +205,29 @@ describe('homepage', () => {
   test('shows the desktop version from latest.json next to the download, cached', async () => {
     let calls = 0;
     let version = '0.7.0';
+    let windows = false;
     let t = 1_000_000;
     const fake = (async (url: any) => {
       expect(String(url)).toBe('https://cdn.test/_downloads/latest.json');
       calls++;
-      return new Response(JSON.stringify({ version }), { status: 200 });
+      return new Response(JSON.stringify({ version, platforms: { 'darwin-aarch64': {}, ...(windows ? { 'windows-x86_64': {} } : {}) } }), { status: 200 });
     }) as typeof fetch;
     const handle = createHostingApi({ domain: 'prepress.test', dataDir: join(dir, 'home'), bucket: 'sites', region: 'fr-par', endpoint: s3Base, accessKeyId: 'AK', secretAccessKey: 'SK', downloadMac: 'https://cdn.test/_downloads/Prepress-mac-arm64.dmg', fetch: fake, now: () => t });
     const srv = createServer((q, r) => void handle(q, r));
     const base = await listen(srv);
     const home = async () => (await fetch(`${base}/`)).text();
     expect(await home()).toContain('Download for Mac <span class="ver">v0.7.0</span>');
+    expect(await home()).not.toContain('Download for Windows');
     version = '0.7.1';
+    windows = true;
     expect(await home()).toContain('v0.7.0'); // cached
     expect(calls).toBe(1);
     t += 11 * 60_000; // stale: served as is, refreshed behind the scenes
     await home();
     await new Promise((r) => setTimeout(r, 20));
     expect(await home()).toContain('v0.7.1');
+    // A release with a Windows build: the installer next to the Mac download.
+    expect(await home()).toContain('href="https://cdn.test/_downloads/Prepress-windows-x64-setup.exe">Download for Windows');
     version = '<script>';
     t += 11 * 60_000;
     await home();

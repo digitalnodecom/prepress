@@ -91,6 +91,8 @@ const TYPES: Record<string, string> = {
   woff2: 'font/woff2',
 };
 
+/** The Windows installer's name on the GitHub release, next to the Mac download (scripts/desktop.mjs). */
+const WINDOWS_DOWNLOAD = 'Prepress-windows-x64-setup.exe';
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 
 class HttpError extends Error {
@@ -190,35 +192,37 @@ export function createHostingApi(cfg: HostingConfig) {
     return null;
   };
 
-  // The desktop app's version, from the updater's latest.json next to the download (cached 10 min,
-  // refreshed in the background; the homepage never waits more than a moment for it).
-  let macVersion: { value?: string; at: number; pending?: Promise<void> } = { at: 0 };
-  const refreshMacVersion = () => {
-    if (!cfg.downloadMac || macVersion.pending) return macVersion.pending;
+  // The desktop app's version and platforms, from the updater's latest.json next to the download
+  // (cached 10 min, refreshed in the background; the homepage never waits more than a moment for
+  // it). The Windows link appears once a release has a Windows build.
+  let desktopInfo: { value?: string; windows?: boolean; at: number; pending?: Promise<void> } = { at: 0 };
+  const refreshDesktopInfo = () => {
+    if (!cfg.downloadMac || desktopInfo.pending) return desktopInfo.pending;
     const url = new URL('latest.json', cfg.downloadMac).toString();
-    macVersion.pending = (cfg.fetch ?? fetch)(url, { signal: AbortSignal.timeout(3000) })
+    desktopInfo.pending = (cfg.fetch ?? fetch)(url, { signal: AbortSignal.timeout(3000) })
       .then((r) => (r.ok ? r.json() : null))
       .then((j: any) => {
         const v = String(j?.version ?? '');
-        macVersion = { value: /^\d+\.\d+\.\d+$/.test(v) ? v : macVersion.value, at: now() };
+        const ok = /^\d+\.\d+\.\d+$/.test(v);
+        desktopInfo = { value: ok ? v : desktopInfo.value, windows: ok ? !!j?.platforms?.['windows-x86_64'] : desktopInfo.windows, at: now() };
       })
       .catch(() => {
-        macVersion = { ...macVersion, at: now(), pending: undefined };
+        desktopInfo = { ...desktopInfo, at: now(), pending: undefined };
       });
-    return macVersion.pending;
+    return desktopInfo.pending;
   };
-  async function currentMacVersion(): Promise<string | undefined> {
-    if (!cfg.downloadMac) return undefined;
-    if (!macVersion.at) await Promise.race([refreshMacVersion(), new Promise((r) => setTimeout(r, 1500))]);
-    else if (now() - macVersion.at > 10 * 60_000) void refreshMacVersion();
-    return macVersion.value;
+  async function currentDesktop(): Promise<{ macVersion?: string; downloadWindows?: string }> {
+    if (!cfg.downloadMac) return {};
+    if (!desktopInfo.at) await Promise.race([refreshDesktopInfo(), new Promise((r) => setTimeout(r, 1500))]);
+    else if (now() - desktopInfo.at > 10 * 60_000) void refreshDesktopInfo();
+    return { macVersion: desktopInfo.value, downloadWindows: desktopInfo.windows ? new URL(WINDOWS_DOWNLOAD, cfg.downloadMac).toString() : undefined };
   }
 
   // ---------- routes ----------
   async function route(req: IncomingMessage, res: ServerResponse): Promise<[number, unknown] | null> {
     const u = new URL(req.url ?? '/', 'http://x');
     // Public pages: homepage and library.
-    if (req.method === 'GET' && u.pathname === '/') return html(res, 200, homePage({ domain: cfg.domain, downloadMac: cfg.downloadMac, macVersion: await currentMacVersion(), webUrl: cfg.webUrl }, library.count()));
+    if (req.method === 'GET' && u.pathname === '/') return html(res, 200, homePage({ domain: cfg.domain, downloadMac: cfg.downloadMac, ...(await currentDesktop()), webUrl: cfg.webUrl }, library.count()));
     if (req.method === 'GET' && (u.pathname === '/library' || u.pathname === '/library/')) return html(res, 200, libraryPage(library, u.searchParams));
     const itemPath = u.pathname.match(/^\/library\/([a-z0-9]{10})(\/report)?$/);
     if (itemPath && req.method === 'GET' && !itemPath[2]) {

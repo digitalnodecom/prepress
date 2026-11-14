@@ -441,8 +441,8 @@ async fn update(app: &AppHandle, manual: bool) -> Result<(), String> {
     let title = window.as_ref().and_then(|w| w.title().ok()).unwrap_or_else(|| "Prepress".into());
     let (mut got, mut shown) = (0u64, u64::MAX);
     let version = update.version.clone();
-    let installed = update
-        .download_and_install(
+    let downloaded = update
+        .download(
             |chunk, total| {
                 got += chunk as u64;
                 let pct = total.filter(|t| *t > 0).map(|t| got * 100 / t).unwrap_or(0);
@@ -456,13 +456,23 @@ async fn update(app: &AppHandle, manual: bool) -> Result<(), String> {
             || {},
         )
         .await;
-    if let Err(e) = installed {
-        if let Some(w) = &window {
-            let _ = w.set_title(&title);
+    let bytes = match downloaded {
+        Ok(b) => b,
+        Err(e) => {
+            if let Some(w) = &window {
+                let _ = w.set_title(&title);
+            }
+            return Err(e.to_string());
         }
+    };
+    // Stop the server before installing: on Windows install() runs the installer and exits this
+    // process right away, and a running prepress.exe would lock the file the installer replaces.
+    stop_server(&state);
+    if let Err(e) = update.install(bytes) {
+        // The site's server is already stopped: back to the site list, from where it reopens.
+        show_launcher(app, "sites");
         return Err(e.to_string());
     }
-    stop_server(&state);
     app.restart();
 }
 

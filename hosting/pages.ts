@@ -11,6 +11,8 @@ export interface PageConfig {
   downloadMac?: string;
   /** Its version, from the updater's latest.json next to it ("0.7.0"). */
   macVersion?: string;
+  /** Windows installer, once a release has a Windows build (same version). */
+  downloadWindows?: string;
   /** Hosted web version, once it exists. */
   webUrl?: string;
 }
@@ -39,7 +41,7 @@ a{color:inherit}main{max-width:1080px;margin:0 auto;padding:56px 20px 40px}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
 .card{display:flex;flex-direction:column;gap:8px;padding:22px;border:1px solid var(--line);border-radius:14px;background:var(--card);text-decoration:none}
 a.card:hover{border-color:var(--accent)}.card .ic{color:var(--accent)}.card h2{font-size:18px;margin:4px 0 0}.card p{margin:0;color:var(--fg2);font-size:15px;flex:1}
-.card .go{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:var(--accent);font-size:15px}.card .soon{color:var(--fg3);font-weight:500;font-size:14px}
+.card .go{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:var(--accent);font-size:15px;text-decoration:none}a.go:hover{text-decoration:underline}.card .soon{color:var(--fg3);font-weight:500;font-size:14px}
 .ver{font-weight:500;color:var(--fg3);font-size:13px;font-variant-numeric:tabular-nums}
 .note{margin:40px auto 0;max-width:640px;text-align:center;color:var(--fg3);font-size:14px}
 .top{display:flex;align-items:center;gap:8px;margin-bottom:24px}.top>a{text-decoration:none;display:flex;align-items:center;gap:10px;font-weight:700}.top .meta a{text-decoration:none}.top svg{width:26px;height:26px}
@@ -65,8 +67,11 @@ export function homePage(cfg: PageConfig, libraryCount: number): string {
   const web = cfg.webUrl
     ? `<a class="card" href="${esc(cfg.webUrl)}">${icon('globe')}<h2>Web version</h2><p>Open Prepress in your browser. Nothing to install.</p><span class="go">Open ${icon('arrow', 16)}</span></a>`
     : `<div class="card">${icon('globe')}<h2>Web version</h2><p>Prepress in your browser, nothing to install.</p><span class="soon">Coming soon</span></div>`;
-  const desktop = cfg.downloadMac
-    ? `<a class="card" href="${esc(cfg.downloadMac)}">${icon('download')}<h2>Desktop app</h2><p>Prepress for macOS (Apple silicon). Sites are folders on your computer; publish when you're ready.</p><span class="go">Download for Mac${cfg.macVersion ? ` <span class="ver">v${esc(cfg.macVersion)}</span>` : ''} ${icon('arrow', 16)}</span></a>`
+  const ver = cfg.macVersion ? ` <span class="ver">v${esc(cfg.macVersion)}</span>` : '';
+  const desktop = cfg.downloadMac && cfg.downloadWindows
+    ? `<div class="card">${icon('download')}<h2>Desktop app</h2><p>Prepress for macOS (Apple silicon) and Windows. Sites are folders on your computer; publish when you're ready.</p><a class="go" href="${esc(cfg.downloadMac)}">Download for Mac${ver} ${icon('arrow', 16)}</a><a class="go" href="${esc(cfg.downloadWindows)}">Download for Windows <span class="ver">beta</span> ${icon('arrow', 16)}</a></div>`
+    : cfg.downloadMac
+    ? `<a class="card" href="${esc(cfg.downloadMac)}">${icon('download')}<h2>Desktop app</h2><p>Prepress for macOS (Apple silicon). Sites are folders on your computer; publish when you're ready.</p><span class="go">Download for Mac${ver} ${icon('arrow', 16)}</span></a>`
     : `<div class="card">${icon('download')}<h2>Desktop app</h2><p>Prepress for your computer.</p><span class="soon">Coming soon</span></div>`;
   return page(
     'Prepress — build websites with the WordPress block editor',

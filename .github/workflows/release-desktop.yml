@@ -1,8 +1,13 @@
 # Desktop release, hands-off: when the version in desktop/src-tauri/tauri.conf.json changes on
-# main (or on a manual run), and there's no published GitHub release v<version> yet, build the
-# macOS app on an Apple silicon runner (macos-15), sign it with the Developer ID certificate, notarize it with
-# an App Store Connect API key (no Apple ID login), sign the updater bundle, and publish the
-# release with scripts/release-desktop.ts (draft → assets read back → published).
+# main (or on a manual run), and there's no published GitHub release v<version> yet:
+#   mac      build on Apple silicon (macos-15), sign with the Developer ID certificate, notarize
+#            with an App Store Connect API key (no Apple ID login), sign the updater bundle
+#   windows  build the NSIS installer on windows-latest, sign it with the updater key (not
+#            Authenticode-signed yet: SmartScreen warns on first run), smoke-test the server
+#   release  merge both platforms' latest.json parts and publish the release with
+#            scripts/release-desktop.ts (draft → assets read back → published). Runs only when
+#            both builds succeeded, so no platform's apps ever see a half release.
+# A manual run with "dry run" builds and checks both apps and publishes nothing.
 #
 # Secrets live in the "release" environment, which only main may use (scripts/ci-secrets.sh
 # uploads them):
@@ -19,6 +24,11 @@ on:
     branches: [main]
     paths: [desktop/src-tauri/tauri.conf.json]
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and check both apps, publish nothing
+        type: boolean
+        default: false
 
 concurrency:
   group: release-desktop
@@ -32,38 +42,42 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.v.outputs.version }}
-      release: ${{ steps.v.outputs.release }}
+      build: ${{ steps.v.outputs.build }}
+      publish: ${{ steps.v.outputs.publish }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - id: v
         env:
           GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
         run: |
           version=$(node -p "require('./desktop/src-tauri/tauri.conf.json').version")
           echo "version=$version" >> "$GITHUB_OUTPUT"
           draft=$(gh release view "v$version" --json isDraft -q .isDraft 2>/dev/null || echo none)
-          if [ "$draft" = "false" ]; then
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry run: build v$version, publish nothing."
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          elif [ "$draft" = "false" ]; then
             echo "v$version is already published: nothing to do."
-            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
           else
-            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
 
-  release:
+  mac:
     needs: check
-    if: needs.check.outputs.release == 'true'
+    if: needs.check.outputs.build == 'true'
     runs-on: macos-15
     environment: release
-    permissions:
-      contents: write
     timeout-minutes: 90
     env:
       APPLE_SIGNING_IDENTITY: 'Developer ID Application: AMPLIFY2 OY (A4XZSTY453)'
       PREPRESS_NOTARY_PROFILE: prepress-notary
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          fetch-depth: 0
 
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
@@ -124,16 +138,124 @@ jobs:
         run: |
           set -euo pipefail
           v=${{ needs.check.outputs.version }}
-          bundle=desktop/src-tauri/target/release/bundle
-          node -e "const j=require('./$bundle/latest.json'); if (j.version !== '$v') { console.error('latest.json is for ' + j.version); process.exit(1); }"
-          spctl -a -vv -t install "$bundle/dmg/Prepress_${v}_aarch64.dmg"
-          codesign -dvv "$bundle/macos/Prepress.app" 2>&1 | grep -q 'TeamIdentifier=A4XZSTY453'
+          out=desktop/src-tauri/target/release/publish
+          node -e "const j=require('./$out/latest-darwin-aarch64.json'); if (j.version !== '$v') { console.error('latest part is for ' + j.version); process.exit(1); }"
+          spctl -a -vv -t install "$out/Prepress-mac-arm64.dmg"
+          codesign -dvv desktop/src-tauri/target/release/bundle/macos/Prepress.app 2>&1 | grep -q 'TeamIdentifier=A4XZSTY453'
+          ls -l "$out"
 
-      - name: Publish the GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: npx bun scripts/release-desktop.ts
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-mac
+          path: desktop/src-tauri/target/release/publish/
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Remove the signing keychain
         if: always()
         run: security delete-keychain "$RUNNER_TEMP/release.keychain-db" || true
+
+  windows:
+    needs: check
+    if: needs.check.outputs.build == 'true'
+    runs-on: windows-latest
+    environment: release
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Keep LF line endings: the tests compare generated files byte for byte.
+      - run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
+        with:
+          tool: tauri-cli@2
+
+      - run: npm ci
+
+      - run: npm test
+
+      - name: Build the installer, sign the updater bundle
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run build:desktop -- --bundles nsis
+
+      - name: Smoke-test the server binary (without node_modules)
+        run: |
+          set -euo pipefail
+          mv node_modules "$RUNNER_TEMP/node_modules.off"
+          ./bin/prepress.exe --version
+          site="$RUNNER_TEMP/smoke-site"
+          mkdir -p "$site"
+          ./bin/prepress.exe --data "$site" --port 41999 > "$RUNNER_TEMP/smoke.log" 2>&1 &
+          pid=$!
+          ok=
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:41999/api/health | grep -q '"server":true'; then ok=1; break; fi
+            sleep 1
+          done
+          if [ -z "$ok" ]; then cat "$RUNNER_TEMP/smoke.log"; exit 1; fi
+          curl -fsS -o /dev/null -w 'editor: %{http_code}\n' 'http://127.0.0.1:41999/?admin=1'
+          kill $pid || true
+          mv "$RUNNER_TEMP/node_modules.off" node_modules
+
+      - name: Check the build
+        run: |
+          set -euo pipefail
+          v=${{ needs.check.outputs.version }}
+          out=desktop/src-tauri/target/release/publish
+          node -e "const j=require('./$out/latest-windows-x86_64.json'); if (j.version !== '$v') { console.error('latest part is for ' + j.version); process.exit(1); }"
+          test -s "$out/Prepress-windows-x64-setup.exe"
+          ls -l "$out"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-windows
+          path: desktop/src-tauri/target/release/publish/
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: [check, mac, windows]
+    if: needs.check.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/publish
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: npx bun scripts/release-desktop.ts "$RUNNER_TEMP/publish"

@@ -10,10 +10,12 @@
 //   PREPRESS_NOTARY_PROFILE=<name>  → the .dmg is notarized and stapled afterwards. Create the
 //     profile once: xcrun notarytool store-credentials <name> --apple-id … --team-id …
 //
-// Auto-update: the build also makes the updater bundle (Prepress.app.tar.gz + .sig, minisign) and
-// bundle/latest.json, signed with the key in ~/.config/prepress/updater.key (or
-// TAURI_SIGNING_PRIVATE_KEY). Without the key the updater bundle is skipped. The app checks
+// Auto-update: the build also makes the updater bundle (macOS: Prepress.app.tar.gz; Windows: the
+// NSIS installer; + .sig, minisign), signed with the key in ~/.config/prepress/updater.key (or
+// TAURI_SIGNING_PRIVATE_KEY), and stages the release files in target/release/publish/ (see
+// stage()). Without the key the updater bundle is skipped. The app checks
 // plugins.updater.endpoints in tauri.conf.json; `npx bun scripts/release-desktop.ts` uploads.
+// Windows: `npm run build:desktop -- --bundles nsis` (the .msi isn't published).
 // The public key in tauri.conf.json must match: losing the private key means installed apps
 // can't update any more (they need a manual download of a build with a new key).
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -46,14 +48,56 @@ const updater = mode === 'build' && !!env.TAURI_SIGNING_PRIVATE_KEY;
 const extra = updater || mode !== 'build' ? [] : ['--config', JSON.stringify({ bundle: { createUpdaterArtifacts: false } })];
 if (mode === 'build' && !updater) console.warn(`No updater key (${keyFile}): building without the auto-update bundle.`);
 const r = spawnSync('cargo', ['tauri', mode, ...extra, ...process.argv.slice(3)], { cwd: 'desktop/src-tauri', stdio: 'inherit', env });
-if (r.status !== 0 || mode !== 'build' || process.platform !== 'darwin') process.exit(r.status ?? 1);
+if (r.status !== 0 || mode !== 'build') process.exit(r.status ?? 1);
 
 const run = (cmd, args) => {
   const x = spawnSync(cmd, args, { stdio: 'inherit' });
   if (x.status !== 0) process.exit(x.status ?? 1);
 };
-const dmgDir = 'desktop/src-tauri/target/release/bundle/dmg';
-const app = 'desktop/src-tauri/target/release/bundle/macos/Prepress.app';
+const bundle = 'desktop/src-tauri/target/release/bundle';
+const version = JSON.parse(readFileSync('desktop/src-tauri/tauri.conf.json', 'utf8')).version;
+const arch = triple.startsWith('aarch64') ? 'aarch64' : 'x86_64';
+const releaseUrl = (name) => `https://github.com/digitalnodecom/prepress/releases/download/v${version}/${name}`;
+
+/**
+ * The files of this platform's release, under their published names, in
+ * desktop/src-tauri/target/release/publish/, plus latest-<platform>.json: this platform's part
+ * of the updater's latest.json. scripts/release-desktop.ts merges the parts of every platform
+ * built (CI builds macOS and Windows) into one latest.json and uploads everything.
+ */
+function stage(platform, files, updaterAsset, sigFile) {
+  const out = 'desktop/src-tauri/target/release/publish';
+  mkdirSync(out, { recursive: true });
+  for (const f of readdirSync(out)) if (f.startsWith('latest-') || files.some(([name]) => name === f)) rmSync(`${out}/${f}`);
+  for (const [name, from] of files) copyFileSync(from, `${out}/${name}`);
+  const part = {
+    version,
+    notes: process.env.PREPRESS_RELEASE_NOTES ?? '',
+    pub_date: new Date().toISOString(),
+    platforms: { [platform]: { signature: readFileSync(sigFile, 'utf8'), url: releaseUrl(updaterAsset) } },
+  };
+  writeFileSync(`${out}/latest-${platform}.json`, JSON.stringify(part, null, 2) + '\n');
+  console.log(`\n${platform}: release files in ${out}/. Publish: npx bun scripts/release-desktop.ts`);
+}
+
+if (process.platform === 'win32') {
+  // Windows: the NSIS installer is both the download and the updater bundle (Tauri 2 signs it
+  // with the updater key: <installer>.sig). Not Authenticode-signed yet: SmartScreen warns.
+  if (!updater) process.exit(0);
+  const nsis = `${bundle}/nsis`;
+  const exeName = readdirSync(nsis).find((n) => n === `Prepress_${version}_x64-setup.exe`);
+  if (!exeName || !existsSync(`${nsis}/${exeName}.sig`)) {
+    console.error(`No signed NSIS installer for ${version} in ${nsis} (build with --bundles nsis and the updater key).`);
+    process.exit(1);
+  }
+  const name = 'Prepress-windows-x64-setup.exe';
+  stage(`windows-${arch}`, [[name, `${nsis}/${exeName}`]], name, `${nsis}/${exeName}.sig`);
+  process.exit(0);
+}
+if (process.platform !== 'darwin') process.exit(0);
+
+const dmgDir = `${bundle}/dmg`;
+const app = `${bundle}/macos/Prepress.app`;
 if (!process.env.APPLE_SIGNING_IDENTITY) {
   console.warn('\nNot signed (APPLE_SIGNING_IDENTITY unset): other Macs will say the app "is damaged".');
   process.exit(0);
@@ -64,7 +108,8 @@ if (!profile) {
   console.warn('\nSigned but not notarized (PREPRESS_NOTARY_PROFILE unset): Gatekeeper will still block downloads.');
   process.exit(0);
 }
-for (const f of readdirSync(dmgDir).filter((f) => f.endsWith('.dmg'))) {
+const dmgs = readdirSync(dmgDir).filter((f) => f.startsWith(`Prepress_${version}_`) && f.endsWith('.dmg'));
+for (const f of dmgs) {
   const dmg = `${dmgDir}/${f}`;
   run('xcrun', ['notarytool', 'submit', dmg, '--keychain-profile', profile, '--wait']);
   run('xcrun', ['stapler', 'staple', dmg]);
@@ -75,7 +120,6 @@ if (!updater) process.exit(0);
 // The dmg's notarization covers the app inside it: staple that ticket to the .app too, then
 // rebuild the updater bundle from the stapled app and sign it again.
 run('xcrun', ['stapler', 'staple', app]);
-const bundle = 'desktop/src-tauri/target/release/bundle';
 const tarball = `${bundle}/macos/Prepress.app.tar.gz`;
 rmSync(tarball, { force: true });
 rmSync(`${tarball}.sig`, { force: true });
@@ -85,19 +129,6 @@ const signArgs = existsSync(key) ? ['-f', key] : ['-k', key];
 const s = spawnSync('cargo', ['tauri', 'signer', 'sign', ...signArgs, '-p', env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD, tarball], { stdio: ['ignore', 'ignore', 'inherit'] });
 if (s.status !== 0) process.exit(s.status ?? 1);
 
-const version = JSON.parse(readFileSync('desktop/src-tauri/tauri.conf.json', 'utf8')).version;
-const arch = triple.startsWith('aarch64') ? 'aarch64' : 'x86_64';
-const latest = {
-  version,
-  notes: process.env.PREPRESS_RELEASE_NOTES ?? '',
-  pub_date: new Date().toISOString(),
-  platforms: {
-    [`darwin-${arch}`]: {
-      signature: readFileSync(`${tarball}.sig`, 'utf8'),
-      // The asset scripts/release-desktop.ts attaches to the GitHub release v<version>.
-      url: `https://github.com/digitalnodecom/prepress/releases/download/v${version}/Prepress-${version}-mac-${arch === 'aarch64' ? 'arm64' : 'x64'}.app.tar.gz`,
-    },
-  },
-};
-writeFileSync(`${bundle}/latest.json`, JSON.stringify(latest, null, 2) + '\n');
-console.log(`\nUpdater bundle signed; ${bundle}/latest.json written. Upload: npx bun scripts/release-desktop.ts`);
+const macArch = arch === 'aarch64' ? 'arm64' : 'x64';
+const bundleName = `Prepress-${version}-mac-${macArch}.app.tar.gz`;
+stage(`darwin-${arch}`, [[`Prepress-mac-${macArch}.dmg`, `${dmgDir}/${dmgs[0]}`], [bundleName, tarball]], bundleName, `${tarball}.sig`);
