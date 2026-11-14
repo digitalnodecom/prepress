@@ -190,7 +190,8 @@ describe('publish targets', () => {
     expect(views[1].connection).toBe(`sftp://deploy:${MASK}@127.0.0.1:${sftp.port}/site`);
     expect(views[2].insecure).toBe(true);
     // Stored locally, readable only by the user.
-    expect(statSync(join(dir, 'data', 'deploy.json')).mode & 0o077).toBe(0);
+    // No POSIX modes on Windows: there the user profile's ACL protects the file.
+    if (process.platform !== 'win32') expect(statSync(join(dir, 'data', 'deploy.json')).mode & 0o077).toBe(0);
 
     writeFileSync(join(dir, 'data', 'uploads', 'pic.png'), 'PNG');
     const first = await publish({ home: '<h1>Home</h1>', about: '<h1>About</h1>' });

@@ -100,7 +100,8 @@ describe('hosting API', () => {
     expect(await (await fetch(`${apiBase}/api/v1/sites/harbor`)).json()).toMatchObject({ owner: false, reason: 'Taken' });
     // Only a hash is stored.
     expect(readFileSync(join(dir, 'api', 'sites.json'), 'utf8')).not.toContain(A);
-    expect(statSync(join(dir, 'api', 'sites.json')).mode & 0o077).toBe(0);
+    // No POSIX modes on Windows: there the user profile's ACL protects the file.
+    if (process.platform !== 'win32') expect(statSync(join(dir, 'api', 'sites.json')).mode & 0o077).toBe(0);
   });
 
   test('presign: allowed paths and types only, size quota, type and caching fixed by the API', async () => {

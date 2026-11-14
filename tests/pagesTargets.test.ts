@@ -363,7 +363,8 @@ describe('connected accounts (device flow)', () => {
     expect(await pollDeviceFlow('github', start.id, o)).toEqual({ status: 'pending' });
     vi.setSystemTime(Date.now() + 5000);
     expect(await pollDeviceFlow('github', start.id, o)).toEqual({ status: 'connected', account: { available: true, connected: true, label: 'octo' } });
-    expect(statSync(join(data, 'accounts.json')).mode & 0o777).toBe(0o600);
+    // No POSIX modes on Windows: there the user profile's ACL protects the file.
+    if (process.platform !== 'win32') expect(statSync(join(data, 'accounts.json')).mode & 0o777).toBe(0o600);
     expect(JSON.stringify(accountsView(o))).not.toContain('gh-token');
     expect(await pollDeviceFlow('github', start.id, o)).toMatchObject({ status: 'failed' });
 
