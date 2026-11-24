@@ -281,12 +281,31 @@ export function createSiteCore(opts: CoreOptions) {
 
   const library = createLibraryClient({ dataDir: dir, base: opts.hostingApi });
 
-  return { library, importer, localizeMedia, viewPage, dir, outDir, uploadsDir, manifestFile, exportsDir, store, deployer, readManifest, writeStatic, publishSite, exportWordPress, deploy };
+  // What the site owner lets AI clients (MCP) do beyond content: <data>/ai-permissions.json, written
+  // only by the editor (PUT /api/ai-permissions, same-origin), never by MCP. Read on every check, so a
+  // stdio process on the same folder follows the editor's switch at once.
+  const permissionsFile = join(dir, 'ai-permissions.json');
+  const aiPermissions = (): { customCode?: boolean } => {
+    try {
+      const j = JSON.parse(readFileSync(permissionsFile, 'utf8'));
+      return { customCode: j?.customCode === true };
+    } catch {
+      return {};
+    }
+  };
+  const setAiPermissions = (p: { customCode?: boolean }) => {
+    const tmp = `${permissionsFile}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify({ customCode: p.customCode === true }), { mode: 0o600 });
+    renameSync(tmp, permissionsFile);
+  };
+  const aiMayChangeCode = () => aiPermissions().customCode === true;
+
+  return { library, importer, localizeMedia, viewPage, dir, outDir, uploadsDir, manifestFile, exportsDir, store, deployer, readManifest, writeStatic, publishSite, exportWordPress, deploy, aiPermissions, setAiPermissions, aiMayChangeCode };
 }
 
 export function createHandler(opts: ServerOptions) {
   const core = createSiteCore(opts);
-  const { library, importer, localizeMedia, viewPage, dir, outDir, uploadsDir, manifestFile, exportsDir, store, deployer, readManifest, writeStatic, publishSite, exportWordPress, deploy } = core;
+  const { library, importer, localizeMedia, viewPage, dir, outDir, uploadsDir, manifestFile, exportsDir, store, deployer, readManifest, writeStatic, publishSite, exportWordPress, deploy, aiPermissions, setAiPermissions, aiMayChangeCode } = core;
   // Writes by a `prepress mcp` process on the same folder reach open editors too.
   store.watch();
   const isAdmin = (url: URL) => url.searchParams.get('admin') === '1';
@@ -310,7 +329,7 @@ export function createHandler(opts: ServerOptions) {
     return !!token && h.startsWith('Bearer ') && timingSafeEqual(sha(h.slice(7).trim()), sha(token));
   };
 
-  const mcp = mcpEnabled && opts.engine ? createMcpHandler({ store, engine: opts.engine, publishSite, exportWordPress, deploy, deployTargets: deployer.view, siteUrl: opts.siteUrl, localizeMedia, importMedia: importer.import, uploadsDir, viewPage, library }) : null;
+  const mcp = mcpEnabled && opts.engine ? createMcpHandler({ store, engine: opts.engine, publishSite, exportWordPress, deploy, deployTargets: deployer.view, siteUrl: opts.siteUrl, localizeMedia, importMedia: importer.import, uploadsDir, viewPage, library, aiMayChangeCode }) : null;
 
   // ---------- API ----------
 
@@ -359,6 +378,14 @@ export function createHandler(opts: ServerOptions) {
         clearInterval(ping);
       });
       return;
+    }
+    // The owner's switches for AI clients (Settings → Analytics & code). Editor only: MCP has no route to them.
+    if (route === 'GET /api/ai-permissions') return json(res, 200, { customCode: !!aiPermissions().customCode });
+    if (route === 'PUT /api/ai-permissions') {
+      const body = (await readJson(req)) ?? {};
+      if (typeof body.customCode !== 'boolean') return json(res, 400, { error: 'Expected { customCode: boolean }' });
+      setAiPermissions({ customCode: body.customCode });
+      return json(res, 200, { customCode: body.customCode });
     }
     if (route === 'GET /api/mcp') {
       if (runtime === 'desktop') return json(res, 200, { mode: 'stdio', stdio: opts.stdioCommand ?? null, name: clients?.name ?? null, clients: clients?.list() ?? [] });

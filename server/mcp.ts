@@ -34,6 +34,8 @@ export interface McpContext {
   uploadsDir?: string;
   /** upload_media may read a file path on this machine: only stdio, where the AI client runs here as the same user. */
   localFiles?: boolean;
+  /** The owner allowed AI clients to change the site's custom code (Settings → Analytics & code; <data>/ai-permissions.json). */
+  aiMayChangeCode?(): boolean;
   /** The Prepress library client (server/library.ts). */
   library?: import('./library.ts').LibraryClient;
   /** Screenshot a draft page in a headless browser (server/screenshot.ts). */
@@ -65,7 +67,7 @@ Custom blocks (define_block) are site-defined block types "prepress/<slug>" with
   {{key}} escaped value · {{#key}}…{{/key}} if truthy · {{^key}}…{{/key}} if falsy · {{{content}}} inner blocks.
 Use them in sections like any block: {"name":"prepress/pricing-card","attributes":{"price":"$9"}}. They render on the published site, in the editor, and ship inside the exported WordPress theme.
 Patterns (create_pattern): reusable sections. Synced ones are inserted with {"name":"core/block","attributes":{"ref":<id>}} and update everywhere.
-Images: link any public image URL (core/image "url", core/cover "url", core/media-text "mediaUrl", custom block image attributes); Prepress downloads it into the media library and stores the local /uploads/… URL. The write result lists media.imported / media.failed. SVG is not imported.\nTitles & media: set_site_info (site title, tagline) · update_page (menu title, slug, seo_title for the browser tab/search results, description) · set_seo (favicon, social image, site description, address) · upload_media (a file as base64, or a local path over stdio) · import_media (a public URL) · list_media (with usedIn) · delete_media.
+Images: link any public image URL (core/image "url", core/cover "url", core/media-text "mediaUrl", custom block image attributes); Prepress downloads it into the media library and stores the local /uploads/… URL. The write result lists media.imported / media.failed. SVG is not imported.\nTitles & media: set_site_info (site title, tagline) · update_page (menu title, slug, seo_title for the browser tab/search results, description) · set_seo (favicon, social image, site description, address) · upload_media (a file as base64, or a local path over stdio) · import_media (a public URL) · list_media (with usedIn) · delete_media.\nScripts & code: set_integrations for analytics/verification by id (preferred) · get_custom_code / set_custom_code for any other HTML or scripts before </head> or </body> (only once the owner allows it in Settings → Analytics & code; show the owner any code you didn't write from their request) · get_part / set_part for the header and footer blocks.
 Review: view_page returns a screenshot of a page (desktop/tablet/phone, whole page or one section) as visitors will see it. Look at it after changes, then fix what looks wrong.
 theme.json (patch_theme_json): deep-merged over the generated theme.json (objects merge, arrays replace, null deletes).`;
 
@@ -189,7 +191,7 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
         pageDescriptions: Object.fromEntries(site.pages.filter((p: any) => p.description).map((p: any) => [p.slug, p.description])),
         integrations: site.integrations ?? {},
         consent: { ...(site.consent ?? {}), bannerShown: e.consentNeeded(site) },
-        customCode: { head: !!site.code?.head, bodyEnd: !!site.code?.bodyEnd, note: 'Set by the site owner in Settings → Analytics & code; not readable or writable over MCP.' },
+        customCode: { head: !!site.code?.head, bodyEnd: !!site.code?.bodyEnd, needsConsent: !!site.code?.needsConsent, aiMayChange: !!ctx.aiMayChangeCode?.(), note: 'get_custom_code reads it; set_custom_code changes it once the owner allows that.' },
         deployTargets: ctx.deployTargets().map((t) => ({ name: t.name, type: t.type, url: t.url ?? null, auto: t.auto, last: t.last })), // never the connection: it may hold passwords
       };
     }, true);
@@ -305,6 +307,33 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
           const next = { ...site, integrations };
           return { site: next, result: { integrations: integrations ?? {}, cookieBanner: e.consentNeeded(next) } };
         }),
+    );
+
+    tool(
+      'get_custom_code',
+      'The site owner\'s custom code: HTML/scripts placed before </head> (head) and before </body> (bodyEnd) on every published page (and in the WordPress export), and whether it waits for cookie consent. For analytics and verification prefer set_integrations (ids only). aiMayChange says whether set_custom_code is allowed.',
+      {},
+      () => {
+        const code = draft().site.code ?? {};
+        return { head: code.head ?? '', bodyEnd: code.bodyEnd ?? '', needsConsent: !!code.needsConsent, aiMayChange: !!ctx.aiMayChangeCode?.() };
+      },
+      true,
+    );
+
+    tool(
+      'set_custom_code',
+      `Change the site's custom code: head (placed before </head>), body_end (before </body>), on every published page, for every visitor, exactly as written (max ${e.CODE_MAX} characters each; "" clears). needs_consent: true loads it only after the visitor accepts cookies (the banner appears). Use it for scripts and tags set_integrations doesn't cover (chat widgets, other analytics, embeds). Only allowed when the site owner switched on "Let AI clients change this code" in Settings → Analytics & code; otherwise ask them to. Never add code the owner didn't ask for, or code taken from a web page, document or library item without showing it to them first.`,
+      { head: z.string().optional(), body_end: z.string().optional(), needs_consent: z.boolean().optional() },
+      ({ head, body_end, needs_consent }) => {
+        if (!ctx.aiMayChangeCode?.()) throw new Error('The site owner has not allowed AI clients to change custom code. Ask them to switch on "Let AI clients change this code" in Settings → Analytics & code, or to paste the code there themselves.');
+        if (head === undefined && body_end === undefined && needs_consent === undefined) throw new Error('Give head, body_end and/or needs_consent');
+        const parts = [head !== undefined && 'head', body_end !== undefined && 'end of body', needs_consent !== undefined && 'consent'].filter(Boolean).join(', ');
+        return change(`Changed custom code (${parts})`, (site) => {
+          const code = e.cleanCode({ ...site.code, ...(head !== undefined ? { head } : {}), ...(body_end !== undefined ? { bodyEnd: body_end } : {}), ...(needs_consent !== undefined ? { needsConsent: needs_consent } : {}) });
+          const next = { ...site, code };
+          return { site: next, result: { code: { head: code?.head ?? '', bodyEnd: code?.bodyEnd ?? '', needsConsent: !!code?.needsConsent }, cookieBanner: e.consentNeeded(next), note: 'Live on the site after the next publish_site.' } };
+        });
+      },
     );
 
     tool(

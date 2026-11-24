@@ -190,6 +190,34 @@ describe('MCP server', () => {
     await put({ targets: [] });
   });
 
+  test('custom code: readable, changeable only after the owner allows it in the editor', async () => {
+    const editor = (method: string, body?: unknown, origin = base) =>
+      fetch(`${base}/api/ai-permissions`, { method, headers: { 'content-type': 'application/json', origin }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    expect(await (await editor('GET')).json()).toEqual({ customCode: false });
+    expect(await call('get_custom_code')).toMatchObject({ head: '', bodyEnd: '', aiMayChange: false });
+    await expect(call('set_custom_code', { head: '<script src="https://chat.example/w.js"></script>' })).rejects.toThrow(/not allowed AI clients/);
+
+    // Only the editor (same origin) flips the switch; there is no MCP tool for it.
+    expect((await editor('PUT', { customCode: true }, 'https://evil.example')).status).toBe(403);
+    expect((await client.listTools()).tools.some((t) => /permission/.test(t.name))).toBe(false);
+    expect(await (await editor('PUT', { customCode: true })).json()).toEqual({ customCode: true });
+
+    const r = await call('set_custom_code', { head: '<script src="https://chat.example/w.js"></script>', body_end: '<div id="chat"></div>', needs_consent: true });
+    expect(r.code).toEqual({ head: '<script src="https://chat.example/w.js"></script>', bodyEnd: '<div id="chat"></div>', needsConsent: true });
+    expect(r.cookieBanner).toBe(true);
+    expect(await call('get_custom_code')).toMatchObject({ bodyEnd: '<div id="chat"></div>', aiMayChange: true });
+    const draft = JSON.parse(readFileSync(join(dir, 'data', 'draft.json'), 'utf8'));
+    expect(draft.by).toBe('mcp');
+    const live = engine.renderPage(draft.site, draft.site.pages[0], { live: true });
+    expect(live).toContain('chat.example/w.js');
+    expect(engine.renderPage(draft.site, draft.site.pages[0])).not.toContain('chat.example');
+
+    // "" clears; switched off again, changes are refused.
+    expect((await call('set_custom_code', { head: '', body_end: '' })).code).toEqual({ head: '', bodyEnd: '', needsConsent: false });
+    await editor('PUT', { customCode: false });
+    await expect(call('set_custom_code', { head: '<script>x()</script>' })).rejects.toThrow(/not allowed/);
+  });
+
   test('errors come back as tool errors with a useful message', async () => {
     await expect(call('get_page', { page: 'nope' })).rejects.toThrow(/No page "nope"/);
     await expect(call('define_block', { name: 'x y', title: 'X', template: '<p>hi</p>' })).rejects.toThrow(/prepress\/my-block/);

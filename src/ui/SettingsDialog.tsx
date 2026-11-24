@@ -91,7 +91,7 @@ export function SettingsDialog(p: Props) {
           )}
 
           {section === 'search' && <SearchPanel site={p.site} serverMode={p.serverMode} onSite={p.onSite} />}
-          {section === 'tracking' && <TrackingPanel site={p.site} onSite={p.onSite} />}
+          {section === 'tracking' && <TrackingPanel site={p.site} onSite={p.onSite} serverMode={p.serverMode} />}
 
           {section === 'publishing' && (
             <>

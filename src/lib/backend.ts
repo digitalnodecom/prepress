@@ -224,3 +224,11 @@ export const libraryMine = () => api<LibraryList>('/api/library/mine');
 export const libraryGet = (id: string, forImport = false) => api<LibraryMeta & { payload: any }>(`/api/library/items/${encodeURIComponent(id)}${forImport ? '?import=1' : ''}`);
 export const libraryShare = (draft: unknown) => api<{ id: string; url: string }>('/api/library/share', post(draft));
 export const libraryDelete = (id: string) => api<{ deleted: string }>(`/api/library/items/${encodeURIComponent(id)}/delete`, post({}));
+
+/** The owner's switches for AI clients (server only; MCP can't change them). */
+export async function getAiPermissions(): Promise<{ customCode: boolean }> {
+  return api('/api/ai-permissions');
+}
+export async function setAiPermissions(p: { customCode: boolean }): Promise<{ customCode: boolean }> {
+  return api('/api/ai-permissions', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(p) });
+}

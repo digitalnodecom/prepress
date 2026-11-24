@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { TriangleAlert, Upload } from 'lucide-react';
 import type { Site } from '../lib/types';
-import { uploadMedia } from '../lib/backend';
+import { getAiPermissions, setAiPermissions, uploadMedia } from '../lib/backend';
 import { CODE_MAX, INTEGRATIONS, cleanCode, cleanIntegration, consentNeeded, mergeConsent, mergeIntegrations, mergeSeo, type IntegrationDef } from '../lib/siteMeta';
 
 type Update = (f: (s: Site) => Site) => void;
@@ -132,7 +132,7 @@ export function SearchPanel({ site, serverMode, onSite }: { site: Site; serverMo
 }
 
 /** Settings → Analytics & code. */
-export function TrackingPanel({ site, onSite }: { site: Site; onSite: Update }) {
+export function TrackingPanel({ site, onSite, serverMode }: { site: Site; onSite: Update; serverMode?: boolean }) {
   const consent = site.consent ?? {};
   const code = site.code ?? {};
   const [head, setHead] = useState(code.head ?? '');
@@ -142,6 +142,18 @@ export function TrackingPanel({ site, onSite }: { site: Site; onSite: Update }) 
     setBody(code.bodyEnd ?? '');
   }, [code.head, code.bodyEnd]);
   const setCode = (patch: Partial<NonNullable<Site['code']>>) => onSite((s) => ({ ...s, code: cleanCode({ ...s.code, ...patch }) }));
+  // May AI clients (MCP) change this code? Off unless the owner says so; stored next to the site, out of MCP's reach.
+  const [aiCode, setAiCode] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!serverMode) return;
+    getAiPermissions()
+      .then((p) => setAiCode(p.customCode))
+      .catch(() => setAiCode(null));
+  }, [serverMode]);
+  const toggleAiCode = (on: boolean) => {
+    setAiCode(on);
+    setAiPermissions({ customCode: on }).then((p) => setAiCode(p.customCode)).catch(() => setAiCode(!on));
+  };
   const setConsent = (patch: Parameters<typeof mergeConsent>[1]) => onSite((s) => ({ ...s, consent: mergeConsent(s.consent, patch) }));
   const banner = consentNeeded(site);
   const waits = INTEGRATIONS.filter((d) => d.consent && site.integrations?.[d.id]);
@@ -178,7 +190,7 @@ export function TrackingPanel({ site, onSite }: { site: Site; onSite: Update }) 
       <hr className="sep" />
       <span className="eyebrow">Custom code</span>
       <p className="deploy-status bad code-warning">
-        <TriangleAlert size={14} /> Runs on every published page, for every visitor, exactly as written. Only paste code from a source you trust. AI clients can’t read or change it.
+        <TriangleAlert size={14} /> Runs on every published page, for every visitor, exactly as written. Only paste code from a source you trust.
       </p>
       <div className="field">
         <label htmlFor="code-head">Before &lt;/head&gt;</label>
@@ -192,6 +204,18 @@ export function TrackingPanel({ site, onSite }: { site: Site; onSite: Update }) 
         <input type="checkbox" checked={!!code.needsConsent} disabled={!code.head && !code.bodyEnd} onChange={(e) => setCode({ needsConsent: e.target.checked })} /> This code uses cookies: load it only after the visitor accepts
       </label>
       <p className="hint">Never runs inside the editor. The local preview of the published site runs it sandboxed, away from the editor. Exported to WordPress in <span className="mono">inc/site-code.php</span>.</p>
+      {aiCode !== null && (
+        <>
+          <label className="check">
+            <input type="checkbox" checked={aiCode} onChange={(e) => toggleAiCode(e.target.checked)} /> Let AI clients change this code
+          </label>
+          <p className="hint">
+            {aiCode
+              ? 'AI apps connected to this site (MCP) can add, change and remove this code. Each change shows up here and in the editor’s notices; check it before you publish.'
+              : 'AI apps can read this code but not change it. Switched on, they can add scripts for you, but an AI that reads a hostile web page could then be tricked into adding one.'}
+          </p>
+        </>
+      )}
     </>
   );
 }

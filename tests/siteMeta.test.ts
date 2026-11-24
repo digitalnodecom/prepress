@@ -189,7 +189,7 @@ describe('server: MCP and the sandboxed preview', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test('MCP sets ids, SEO and the banner; sees that custom code exists, never its text', async () => {
+  test('MCP sets ids, SEO and the banner; custom code stays the owner\'s until they allow AI changes', async () => {
     await expect(call('set_integrations', { ga4: '<script>alert(1)</script>' })).rejects.toThrow(/Google Analytics 4/);
     expect((await call('set_integrations', { ga4: 'G-ABC1234567' })).cookieBanner).toBe(true);
     await call('set_seo', { url: 'https://bakery.example', description: 'Bread.' });
@@ -200,10 +200,13 @@ describe('server: MCP and the sandboxed preview', () => {
     expect(site.integrations).toEqual({ ga4: 'G-ABC1234567' });
     expect(site.seo).toEqual({ url: 'https://bakery.example', description: 'Bread.' });
     expect(site.pageDescriptions[about.slug]).toBe('About us.');
-    expect(site.customCode).toMatchObject({ head: true, bodyEnd: false });
+    expect(site.customCode).toMatchObject({ head: true, bodyEnd: false, aiMayChange: false });
     expect(JSON.stringify(site)).not.toContain('ownerCode');
+    // Readable on request (it's on every published page anyway), not changeable without the owner's switch.
+    expect((await call('get_custom_code')).head).toContain('window.ownerCode=1');
+    await expect(call('set_custom_code', { head: '<script>evil()</script>' })).rejects.toThrow(/not allowed/);
     const { tools } = await client.listTools();
-    expect(tools.some((t) => /code/i.test(t.name))).toBe(false);
+    expect(tools.map((t) => t.name).filter((n) => /code/i.test(n)).sort()).toEqual(['get_custom_code', 'set_custom_code']);
   });
 
   test('publish writes the live pages, sitemap and robots; the preview is sandboxed; null-origin writes are refused', async () => {

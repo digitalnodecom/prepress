@@ -29,6 +29,7 @@ export async function runStdio(opts: CoreOptions & { engine: Engine }) {
     uploadsDir: core.uploadsDir,
     // The AI client started this process on this machine, as this user: it may hand over file paths.
     localFiles: true,
+    aiMayChangeCode: core.aiMayChangeCode,
     viewPage: core.viewPage,
     library: core.library,
   })();
