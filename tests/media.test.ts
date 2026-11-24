@@ -193,3 +193,88 @@ describe('over MCP and the editor API', () => {
     expect((await bad.json()).error).toMatch(/private address/);
   });
 });
+
+describe('MCP: titles, favicons and media management', () => {
+  // ICO with one 1×1 image entry.
+  const ICO = Buffer.from('0000010001000101000001002000300000001600000000', 'hex');
+  const connect = async (localFiles: boolean) => {
+    const data = mkdtempSync(join(dir, 'manage-'));
+    const { site } = engine.buildStarter('blank', { name: 'Bakery' });
+    writeFileSync(join(data, 'draft.json'), JSON.stringify({ site, rev: 1 }));
+    const web = fakeWeb({ 'https://cdn.example/icon.png': { type: 'image/png', body: Buffer.concat([PNG, Buffer.from([7])]) }, 'https://cdn.example/share.jpg': { type: 'image/jpeg', body: JPG } });
+    const { createSiteCore } = await import('../server/app');
+    const { mcpServerFactory } = await import('../server/mcp');
+    const { InMemoryTransport } = await import('@modelcontextprotocol/sdk/inMemory.js');
+    const core = createSiteCore({ dataDir: data, outDir: join(data, 'www'), engine, mediaImport: { fetch: web.fetch, resolve: web.resolve } });
+    const server = mcpServerFactory({ store: core.store, engine, publishSite: core.publishSite, exportWordPress: core.exportWordPress, deploy: core.deploy, deployTargets: core.deployer.view, localizeMedia: core.localizeMedia, importMedia: core.importer.import, uploadsDir: core.uploadsDir, localFiles })();
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await server.connect(a);
+    const client = new Client({ name: 't', version: '1' });
+    await client.connect(b);
+    const call = async (name: string, args: Record<string, unknown> = {}) => {
+      const r: any = await client.callTool({ name, arguments: args });
+      if (r.isError) throw new Error(r.content[0].text);
+      return JSON.parse(r.content[0].text);
+    };
+    return { data, call, client };
+  };
+
+  test('upload (base64), favicon and social image from links, page titles, usage and delete', async () => {
+    const { data, call, client } = await connect(false);
+    // Base64 in, a library URL out; the same bytes again are reused.
+    const up = await call('upload_media', { data: PNG.toString('base64'), name: 'Team Photo.png' });
+    expect(up.url).toMatch(/^\/uploads\/team-photo-[0-9a-f]{10}\.png$/);
+    expect((await call('upload_media', { data: `data:image/png;base64,${PNG.toString('base64')}`, name: 'again.png' })).url).toBe(up.url);
+    await expect(call('upload_media', { data: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString('base64'), name: 'x.svg' })).rejects.toThrow(/SVG/);
+    // Over HTTP (not stdio) there is no path parameter: a path is never read.
+    const tool = (await client.listTools()).tools.find((t) => t.name === 'upload_media')!;
+    expect(Object.keys((tool.inputSchema as any).properties)).not.toContain('path');
+    await expect(call('upload_media', { path: '/etc/hosts' })).rejects.toThrow(/data/);
+
+    // An ICO favicon, and linked images downloaded into the library.
+    const ico = await call('upload_media', { data: ICO.toString('base64'), name: 'favicon.ico' });
+    expect(ico.url).toMatch(/\.ico$/);
+    const seo = await call('set_seo', { favicon: 'https://cdn.example/icon.png', image: 'https://cdn.example/share.jpg' });
+    expect(seo.seo.favicon).toMatch(/^\/uploads\/icon-[0-9a-f]{10}\.png$/);
+    expect(seo.seo.image).toMatch(/^\/uploads\/share-[0-9a-f]{10}\.jpg$/);
+    await expect(call('set_seo', { favicon: 'https://cdn.example/missing.png' })).rejects.toThrow(/Favicon/);
+    await call('set_seo', { favicon: ico.url });
+
+    // Titles: the site name, a page's menu title and its own title for the browser tab / search.
+    await call('set_site_info', { name: 'Harbor Bakery' });
+    await call('create_page', { title: 'About' });
+    const page = await call('update_page', { page: 'about', seo_title: 'About us – bread since 1920' });
+    expect(page.page.documentTitle).toBe('About us – bread since 1920');
+    expect((await call('update_page', { page: 'home', seo_title: '' })).page.documentTitle).toBe('Harbor Bakery');
+    const draft = JSON.parse(readFileSync(join(data, 'draft.json'), 'utf8'));
+    const about = draft.site.pages.find((p: any) => p.slug === 'about');
+    const html = engine.renderPage(draft.site, about);
+    expect(html).toContain('<title>About us – bread since 1920</title>');
+    expect(html).toContain(`<link rel="icon" href="${ico.url}" type="image/x-icon">`);
+
+    // Usage, then delete: refused while used, unless forced; unused files go.
+    await call('insert_section', { page: 'about', sections: [{ name: 'core/image', attributes: { url: up.url, alt: 'Team' } }] });
+    const files = (await call('list_media')).files;
+    expect(files.find((f: any) => f.url === up.url).usedIn).toEqual(['page:about']);
+    expect(files.find((f: any) => f.url === ico.url).usedIn).toEqual(['seo.favicon']);
+    await expect(call('delete_media', { file: up.url })).rejects.toThrow(/used in page:about/);
+    const unused = files.find((f: any) => !f.usedIn.length);
+    expect((await call('delete_media', { file: unused.url })).deleted).toBe(unused.url);
+    expect(existsSync(join(data, 'uploads', unused.url.slice('/uploads/'.length)))).toBe(false);
+    expect((await call('delete_media', { file: up.url, force: true })).brokenIn).toEqual(['page:about']);
+    await expect(call('delete_media', { file: '../draft.json' })).rejects.toThrow(/No file/);
+    expect(existsSync(join(data, 'draft.json'))).toBe(true);
+  });
+
+  test('over stdio, a file on this computer can be uploaded by path', async () => {
+    const { call } = await connect(true);
+    const file = join(dir, 'local photo.jpg');
+    writeFileSync(file, JPG);
+    const r = await call('upload_media', { path: file });
+    expect(r.url).toMatch(/^\/uploads\/local-photo-[0-9a-f]{10}\.jpg$/);
+    await expect(call('upload_media', { path: 'relative.jpg' })).rejects.toThrow(/absolute/);
+    await expect(call('upload_media', { path: join(dir, 'nope.jpg') })).rejects.toThrow(/No file/);
+    writeFileSync(join(dir, 'notes.txt'), 'secret notes');
+    await expect(call('upload_media', { path: join(dir, 'notes.txt') })).rejects.toThrow(/Not an image/);
+  });
+});

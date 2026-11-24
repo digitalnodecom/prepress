@@ -3,6 +3,7 @@
  *
  *   prepress [--port 8080] [--data ./prepress-data] [--out ./prepress-data/public] [--site-url https://example.com]
  *   prepress mcp --data <dir>          (MCP over stdio, server/stdio.ts)
+ *   prepress site --data <dir> [--name <title>]   (show or rename a site; the desktop app's site list)
  *
  * Local only: listens on 127.0.0.1 without a password (see server/app.ts).
  *
@@ -121,6 +122,27 @@ const dataDir = resolve(args.data ?? process.env.PREPRESS_DATA ?? 'prepress-data
 const outDir = resolve(args.out ?? process.env.PREPRESS_OUT ?? join(dataDir, 'public'));
 const siteUrl = (args['site-url'] ?? process.env.PREPRESS_SITE_URL ?? '').replace(/\/+$/, '') || undefined;
 
+// `prepress site --data <dir> [--name <title>]`: the desktop app's site list renames sites with
+// this (same draft lock and header/footer rebuild as MCP set_site_info, so an open editor
+// reloads). Prints {"name","pages"} as JSON.
+if (process.argv[2] === 'site') {
+  const { DraftStore } = await import('./store.ts');
+  const store = new DraftStore(dataDir);
+  try {
+    if (args.name !== undefined) {
+      const name = args.name.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 80);
+      if (!name) throw new Error('Give the site a name.');
+      await store.update('app', (cur) => ({ site: engine.rebuildParts({ ...cur.site, name }), summary: `Renamed the site to “${name}”` }));
+    }
+    const d = store.read();
+    process.stdout.write(JSON.stringify({ name: d?.site?.name ?? null, pages: d?.site?.pages?.length ?? 0 }) + '\n');
+    process.exit(0);
+  } catch (e: any) {
+    process.stderr.write(String(e?.message ?? e) + '\n');
+    process.exit(1);
+  }
+}
+
 mkdirSync(dataDir, { recursive: true });
 
 if (stdio) {
@@ -144,6 +166,7 @@ if (stdio) {
     stdioCommand: stdioCommand(),
     adminHtml,
     runtime: desktop ? 'desktop' : 'server',
+    launcherUrl: process.env.PREPRESS_LAUNCHER_URL,
     });
   } catch (e: any) {
     console.error(String(e?.message ?? e));

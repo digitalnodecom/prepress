@@ -49,6 +49,8 @@ export interface Page {
   content: string;
   /** Meta description for search results and link previews; the site description when empty. */
   description?: string;
+  /** The <title> (browser tab, search results, link previews) when it should differ from "Title – Site". */
+  seoTitle?: string;
 }
 
 export interface Site {

@@ -11,6 +11,7 @@ import {
 import { validateMarkup } from '../lib/wp/markup';
 import { pageUrl, renderPage } from '../lib/wp/render';
 import { exportSite } from '../lib/wp/export';
+import { documentTitle } from '../lib/siteMeta';
 import { connectBackend, libraryGet,
   openPublishedSite, loadDraft, publish, saveDraft, siteHash, subscribeChanges, type Backend, type Draft } from '../lib/backend';
 import { registerCustomBlocks } from '../lib/wp/customBlocks';
@@ -532,6 +533,20 @@ export function App() {
 
   /** Where the published site lives: --site-url, else the preview on this server. */
   const siteBase = backend?.kind === 'server' ? backend.siteUrl ?? '' : null;
+  /** Logo → all sites (desktop): save an edit still waiting for autosave first, then leave. */
+  const leaveForSites = async (ev: React.MouseEvent<HTMLAnchorElement>) => {
+    const to = ev.currentTarget.href;
+    if (!site || !backend || saveState !== 'saving') return;
+    ev.preventDefault();
+    try {
+      const rev = await saveDraft(backend, { site, brief, isSample, publishedHash }, revRef.current);
+      if (rev !== undefined) revRef.current = rev;
+    } catch {
+      flash('Couldn’t save the last change; staying here.');
+      return;
+    }
+    window.location.href = to;
+  };
 
 
   if (!site || !page) {
@@ -566,9 +581,16 @@ export function App() {
       <SelectionSync selected={selected} onSelected={onSelectSection} />
       <div className="app">
         <header className="bar">
-          <a className="wordmark" href={siteBase ? siteBase + '/' : undefined} target="_blank" rel="noreferrer" title={siteBase ? 'View site' : 'Prepress'} aria-label={siteBase ? 'Prepress — view site' : 'Prepress'}>
-            <Logo />
-          </a>
+          {backend?.kind === 'server' && backend.launcher ? (
+            // Desktop app: the logo leads to the list of all sites (the app's launcher page).
+            <a className="wordmark" href={backend.launcher} title="All sites" aria-label="Prepress — all sites" onClick={leaveForSites}>
+              <Logo />
+            </a>
+          ) : (
+            <a className="wordmark" href={siteBase ? siteBase + '/' : undefined} target="_blank" rel="noreferrer" title={siteBase ? 'View site' : 'Prepress'} aria-label={siteBase ? 'Prepress — view site' : 'Prepress'}>
+              <Logo />
+            </a>
+          )}
           <div className="bar-tools">
             <button
               className={`btn icon-btn ${left === 'inserter' ? 'primary' : 'ghost'}`}
@@ -729,7 +751,7 @@ export function App() {
                     onReset={() => setSite((s) => resetPart(s, part))}
                   />
                 )}
-                {tab === 'page' && !part && <PagePanel page={page} siteUrl={siteBase} fallbackDescription={site.seo?.description || site.tagline} onUpdate={(patch) => setSite((s) => updatePage(s, page.id, patch))} />}
+                {tab === 'page' && !part && <PagePanel page={page} siteUrl={siteBase} fallbackDescription={site.seo?.description || site.tagline} defaultTitle={documentTitle(site, { ...page, seoTitle: undefined })} onUpdate={(patch) => setSite((s) => updatePage(s, page.id, patch))} />}
                 {tab === 'block' && <Inspector />}
                 {tab === 'styles' && (
                   <>

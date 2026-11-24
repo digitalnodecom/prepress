@@ -108,6 +108,30 @@ describe('server', () => {
   });
 });
 
+describe('desktop app: the editor logo leads to the site list', () => {
+  test('only the app\'s own launcher page is passed on', async () => {
+    const d = mkdtempSync(join(tmpdir(), 'prepress-launcher-'));
+    const launcher = async (runtime: 'desktop' | 'server', launcherUrl: string) => {
+      const h = createHandler({ dataDir: join(d, 'data'), runtime, launcherUrl });
+      const s = createServer((q, r) => void h(q, r));
+      await new Promise<void>((r) => s.listen(0, '127.0.0.1', r));
+      try {
+        return (await (await fetch(`http://127.0.0.1:${(s.address() as any).port}/api/health`)).json()).launcher;
+      } finally {
+        s.close();
+      }
+    };
+    try {
+      expect(await launcher('desktop', 'tauri://localhost/index.html#sites')).toBe('tauri://localhost/index.html#sites');
+      expect(await launcher('desktop', 'http://tauri.localhost/index.html#sites')).toBe('http://tauri.localhost/index.html#sites');
+      for (const bad of ['https://evil.example/index.html#sites', 'javascript:alert(1)', 'tauri://localhost/other.html', 'tauri://localhost.evil/index.html']) expect(await launcher('desktop', bad), bad).toBeUndefined();
+      expect(await launcher('server', 'tauri://localhost/index.html#sites')).toBeUndefined();
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('AI connection depends on the runtime', () => {
   const start = async (runtime: 'desktop' | 'server') => {
     const d = mkdtempSync(join(tmpdir(), `prepress-${runtime}-`));
@@ -127,6 +151,8 @@ describe('AI connection depends on the runtime', () => {
       expect(info.token).toBeUndefined();
       expect((await fetch(`${b}/mcp`, { method: 'POST' })).status).toBe(404);
       expect((await (await fetch(`${b}/api/health`)).json()).runtime).toBe('desktop');
+      // No launcher address given: the editor's logo keeps its "view site" link.
+      expect((await (await fetch(`${b}/api/health`)).json()).launcher).toBeUndefined();
       // One-click connect to an AI app (here Cursor, in a temp home folder).
       expect(info.name).toBe('prepress-my-site');
       expect(info.clients.find((c: any) => c.id === 'cursor')).toMatchObject({ installed: false, connected: false });

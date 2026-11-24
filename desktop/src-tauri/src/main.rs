@@ -75,7 +75,14 @@ struct Config {
 struct SiteView {
     path: String,
     name: String,
+    /// The folder's own name (what Rename folder changes).
+    folder: String,
     opened: u64,
+    /// When the draft was last saved (seconds since 1970), 0 if never.
+    edited: u64,
+    pages: usize,
+    /// Where the site is published: its search & sharing address, else the first publish target's URL.
+    address: Option<String>,
     exists: bool,
     running: bool,
 }
@@ -107,6 +114,49 @@ fn save_config(app: &AppHandle, config: &Config) -> Result<(), String> {
 
 fn now() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+/// What the site list shows about a site folder: page count, public address, last edit.
+/// deploy.json holds publish passwords: only each target's `url` is read from it.
+fn site_details(path: &Path) -> (usize, Option<String>, u64) {
+    let draft = path.join("draft.json");
+    let edited = fs::metadata(&draft)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let json = |f: PathBuf| fs::read_to_string(f).ok().and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok());
+    let site = json(draft);
+    let pages = site.as_ref().and_then(|v| v["site"]["pages"].as_array().map(Vec::len)).unwrap_or(0);
+    let is_url = |s: &&str| s.starts_with("https://") || s.starts_with("http://");
+    let address = site
+        .as_ref()
+        .and_then(|v| v["site"]["seo"]["url"].as_str().filter(is_url).map(str::to_string))
+        .or_else(|| {
+            json(path.join("deploy.json")).and_then(|v| {
+                v["targets"].as_array().and_then(|ts| ts.iter().find_map(|t| t["url"].as_str().filter(is_url).map(str::to_string)))
+            })
+        });
+    (pages, address, edited)
+}
+
+fn folder_name(path: &Path) -> String {
+    path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string())
+}
+
+/// A name usable as a folder name on every OS (no separators, reserved characters or trailing dots).
+fn clean_folder_name(name: &str) -> Result<String, String> {
+    let clean: String = name
+        .trim()
+        .chars()
+        .map(|c| if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control() { '-' } else { c })
+        .collect();
+    let clean = clean.trim_matches(|c: char| c == '.' || c.is_whitespace()).to_string();
+    if clean.is_empty() {
+        return Err("Give it a name.".into());
+    }
+    Ok(clean.chars().take(80).collect())
 }
 
 /// The site's title from its draft, else the folder name.
@@ -214,6 +264,8 @@ fn start_server(app: &AppHandle, path: &Path) -> Result<Running, String> {
         .env("PREPRESS_PARENT_PID", std::process::id().to_string())
         // Desktop runtime: AI clients connect over stdio (`prepress mcp`), HTTP /mcp stays off.
         .env("PREPRESS_APP", "desktop")
+        // The editor's Prepress logo leads back to the site list.
+        .env("PREPRESS_LAUNCHER_URL", launcher_url("sites").to_string())
         .stdin(Stdio::null())
         .stdout(out)
         .stderr(err);
@@ -269,20 +321,39 @@ fn current_site(app: &AppHandle) -> Option<(PathBuf, u16)> {
 
 // ---------- commands (launcher page only; the editor page has no IPC) ----------
 
+/// Every site: the ones opened before (most recent first), then any other site folder in the
+/// sites folder (Documents/Prepress), newest edit first.
 #[tauri::command]
 fn list_sites(app: AppHandle, state: State<'_, AppState>) -> Vec<SiteView> {
     let running = state.running.lock().unwrap().as_ref().map(|r| r.path.display().to_string());
-    load_config(&app)
-        .sites
+    let mut entries = load_config(&app).sites;
+    let mut found: Vec<SiteEntry> = fs::read_dir(sites_folder(app.clone()))
+        .map(|dir| {
+            dir.filter_map(Result::ok)
+                .map(|e| e.path())
+                .filter(|p| p.join("draft.json").is_file())
+                .map(|p| SiteEntry { path: p.display().to_string(), name: String::new(), opened: 0 })
+                .filter(|f| !entries.iter().any(|s| s.path == f.path))
+                .collect()
+        })
+        .unwrap_or_default();
+    found.sort_by_key(|f| std::cmp::Reverse(site_details(Path::new(&f.path)).2));
+    entries.extend(found);
+    entries
         .into_iter()
         .map(|s| {
             let p = PathBuf::from(&s.path);
             let exists = p.is_dir();
+            let (pages, address, edited) = if exists { site_details(&p) } else { (0, None, 0) };
             SiteView {
                 name: if exists { site_name(&p) } else { s.name },
+                folder: folder_name(&p),
                 running: running.as_deref() == Some(s.path.as_str()),
                 path: s.path,
                 opened: s.opened,
+                edited,
+                pages,
+                address,
                 exists,
             }
         })
@@ -302,15 +373,7 @@ fn sites_folder(app: AppHandle) -> String {
 /// Make a new, empty site folder under Documents/Prepress. The editor sets the site up on first open.
 #[tauri::command]
 fn create_site(app: AppHandle, name: String) -> Result<String, String> {
-    let clean: String = name
-        .trim()
-        .chars()
-        .map(|c| if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control() { '-' } else { c })
-        .collect();
-    let clean = clean.trim_matches(|c: char| c == '.' || c.is_whitespace()).to_string();
-    if clean.is_empty() {
-        return Err("Give the site a name.".into());
-    }
+    let clean = clean_folder_name(&name).map_err(|_| "Give the site a name.".to_string())?;
     let path = PathBuf::from(sites_folder(app)).join(&clean);
     if path.exists() && fs::read_dir(&path).map(|mut d| d.next().is_some()).unwrap_or(true) {
         return Err(format!("{} already exists. Open it, or pick another name.", path.display()));
@@ -373,6 +436,143 @@ fn forget_site(app: AppHandle, path: String) -> Result<(), String> {
 #[tauri::command]
 fn reveal(app: AppHandle, path: String) -> Result<(), String> {
     app.opener().reveal_item_in_dir(path).map_err(|e| e.to_string())
+}
+
+/// A site's public address, in the browser (http/https only).
+#[tauri::command]
+fn open_url(app: AppHandle, url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("Not a web address".into());
+    }
+    app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
+}
+
+/// Run the bundled server's `prepress site` command on a site folder (server/main.ts): the same
+/// draft lock and header/footer rebuild as the editor, so an open editor picks the change up.
+fn site_command(path: &Path, args: &[&str]) -> Result<String, String> {
+    let mut cmd = Command::new(server_bin()?);
+    cmd.arg("site").arg("--data").arg(path).args(args).stdin(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let out = cmd.output().map_err(|e| format!("Can't run the Prepress server: {e}"))?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr).trim().lines().last().unwrap_or("").to_string();
+        return Err(if err.contains("no site yet") { "Open this site once before renaming it.".into() } else if err.is_empty() { "Renaming failed.".into() } else { err });
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// Change a site's title (what the header shows and the list calls it).
+#[tauri::command]
+async fn rename_site(app: AppHandle, path: String, name: String) -> Result<String, String> {
+    let dir = PathBuf::from(&path);
+    let out = tauri::async_runtime::spawn_blocking(move || site_command(&dir, &["--name", &name])).await.map_err(|e| e.to_string())??;
+    let name = serde_json::from_str::<serde_json::Value>(&out).ok().and_then(|v| v["name"].as_str().map(str::to_string)).unwrap_or_default();
+    let mut config = load_config(&app);
+    for s in config.sites.iter_mut().filter(|s| s.path == path) {
+        s.name = name.clone();
+    }
+    save_config(&app, &config)?;
+    Ok(name)
+}
+
+/// Rename a site's folder in place. Its server is stopped first if it is running.
+#[tauri::command]
+fn rename_folder(app: AppHandle, state: State<'_, AppState>, path: String, folder: String) -> Result<String, String> {
+    let src = PathBuf::from(&path);
+    let clean = clean_folder_name(&folder)?;
+    let parent = src.parent().ok_or("This folder can't be renamed")?;
+    let dst = parent.join(&clean);
+    if dst == src {
+        return Ok(path);
+    }
+    // A different folder by that name (on case-insensitive disks, "site" → "Site" is the same one).
+    let same = fs::canonicalize(&dst).ok().zip(fs::canonicalize(&src).ok()).map(|(a, b)| a == b).unwrap_or(false);
+    if dst.exists() && !same {
+        return Err(format!("{} already exists.", dst.display()));
+    }
+    if state.running.lock().unwrap().as_ref().map(|r| r.path == src).unwrap_or(false) {
+        stop_server(&state);
+    }
+    fs::rename(&src, &dst).map_err(|e| format!("Can't rename the folder: {e}"))?;
+    let new_path = dst.display().to_string();
+    let mut config = load_config(&app);
+    for s in config.sites.iter_mut().filter(|s| s.path == path) {
+        s.path = new_path.clone();
+    }
+    save_config(&app, &config)?;
+    Ok(new_path)
+}
+
+/// Copy a site into "<folder> copy" next to it: the draft and its media only. Never the publish
+/// targets, their passwords, tokens or publish state, so the copy can't overwrite the original's live site.
+#[tauri::command]
+async fn duplicate_site(app: AppHandle, path: String) -> Result<String, String> {
+    let src = PathBuf::from(&path);
+    if !src.join("draft.json").is_file() {
+        return Err("Only a site that has been opened once can be duplicated.".into());
+    }
+    let parent = src.parent().ok_or("No parent folder")?.to_path_buf();
+    let base = format!("{} copy", folder_name(&src));
+    let dst = (1..100)
+        .map(|n| parent.join(if n == 1 { base.clone() } else { format!("{base} {n}") }))
+        .find(|p| !p.exists())
+        .ok_or("Too many copies")?;
+    fs::create_dir_all(dst.join("uploads")).map_err(|e| e.to_string())?;
+    let copy = |name: &str| -> Result<(), String> {
+        let from = src.join(name);
+        if from.is_file() {
+            fs::copy(&from, dst.join(name)).map_err(|e| format!("Can't copy {name}: {e}"))?;
+        }
+        Ok(())
+    };
+    copy("draft.json")?;
+    copy("media-imports.json")?;
+    if let Ok(files) = fs::read_dir(src.join("uploads")) {
+        for f in files.filter_map(Result::ok).filter(|f| f.file_type().map(|t| t.is_file()).unwrap_or(false)) {
+            fs::copy(f.path(), dst.join("uploads").join(f.file_name())).map_err(|e| e.to_string())?;
+        }
+    }
+    let name = format!("{} copy", site_name(&src));
+    let target = dst.clone();
+    // A title that says it's the copy; the folder copy is already usable if this fails.
+    let _ = tauri::async_runtime::spawn_blocking(move || site_command(&target, &["--name", &name])).await;
+    let mut config = load_config(&app);
+    let at = config.sites.iter().position(|s| s.path == path).map(|i| i + 1).unwrap_or(0);
+    config.sites.insert(at, SiteEntry { path: dst.display().to_string(), name: site_name(&dst), opened: 0 });
+    config.sites.truncate(30);
+    save_config(&app, &config)?;
+    Ok(dst.display().to_string())
+}
+
+/// Move a site's folder to the Trash / Recycle Bin (asks first; restorable from there).
+#[tauri::command]
+async fn trash_site(app: AppHandle, path: String) -> Result<bool, String> {
+    let dir = PathBuf::from(&path);
+    if !dir.is_dir() {
+        return Err("The folder is gone already.".into());
+    }
+    let bin = if cfg!(windows) { "Recycle Bin" } else { "Trash" };
+    let text = format!(
+        "The folder {} and everything in it go to the {bin}; you can restore it from there.\n\nCopies already published on the web stay online.",
+        dir.display()
+    );
+    let yes = ask(&app, MessageDialogKind::Warning, format!("Move “{}” to the {bin}?", site_name(&dir)), text, MessageDialogButtons::OkCancelCustom(format!("Move to {bin}"), "Cancel".into())).await;
+    if !yes {
+        return Ok(false);
+    }
+    let state = app.state::<AppState>();
+    if state.running.lock().unwrap().as_ref().map(|r| r.path == dir).unwrap_or(false) {
+        stop_server(&state);
+    }
+    trash::delete(&dir).map_err(|e| format!("Can't move it to the {bin}: {e}"))?;
+    let mut config = load_config(&app);
+    config.sites.retain(|s| s.path != path);
+    save_config(&app, &config)?;
+    Ok(true)
 }
 
 // ---------- updates ----------
@@ -581,7 +781,7 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::default())
-        .invoke_handler(tauri::generate_handler![list_sites, sites_folder, create_site, pick_folder, open_site, forget_site, reveal])
+        .invoke_handler(tauri::generate_handler![list_sites, sites_folder, create_site, pick_folder, open_site, forget_site, reveal, open_url, rename_site, rename_folder, duplicate_site, trash_site])
         .menu(menu)
         .on_menu_event(|app, event| on_menu(app, event.id().as_ref()))
         .setup(|app| {

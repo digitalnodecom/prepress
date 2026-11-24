@@ -32,6 +32,8 @@ export interface McpContext {
   localizeMedia?(site: any): Promise<{ site: any; imported: { from: string; to: string }[]; failed: { url: string; error: string }[] }>;
   importMedia?(url: string): Promise<{ url: string; file: string; reused: boolean }>;
   uploadsDir?: string;
+  /** upload_media may read a file path on this machine: only stdio, where the AI client runs here as the same user. */
+  localFiles?: boolean;
   /** The Prepress library client (server/library.ts). */
   library?: import('./library.ts').LibraryClient;
   /** Screenshot a draft page in a headless browser (server/screenshot.ts). */
@@ -63,7 +65,7 @@ Custom blocks (define_block) are site-defined block types "prepress/<slug>" with
   {{key}} escaped value · {{#key}}…{{/key}} if truthy · {{^key}}…{{/key}} if falsy · {{{content}}} inner blocks.
 Use them in sections like any block: {"name":"prepress/pricing-card","attributes":{"price":"$9"}}. They render on the published site, in the editor, and ship inside the exported WordPress theme.
 Patterns (create_pattern): reusable sections. Synced ones are inserted with {"name":"core/block","attributes":{"ref":<id>}} and update everywhere.
-Images: link any public image URL (core/image "url", core/cover "url", core/media-text "mediaUrl", custom block image attributes); Prepress downloads it into the media library and stores the local /uploads/… URL. The write result lists media.imported / media.failed. SVG is not imported.
+Images: link any public image URL (core/image "url", core/cover "url", core/media-text "mediaUrl", custom block image attributes); Prepress downloads it into the media library and stores the local /uploads/… URL. The write result lists media.imported / media.failed. SVG is not imported.\nTitles & media: set_site_info (site title, tagline) · update_page (menu title, slug, seo_title for the browser tab/search results, description) · set_seo (favicon, social image, site description, address) · upload_media (a file as base64, or a local path over stdio) · import_media (a public URL) · list_media (with usedIn) · delete_media.
 Review: view_page returns a screenshot of a page (desktop/tablet/phone, whole page or one section) as visitors will see it. Look at it after changes, then fix what looks wrong.
 theme.json (patch_theme_json): deep-merged over the generated theme.json (objects merge, arrays replace, null deletes).`;
 
@@ -259,26 +261,38 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
 
     tool(
       'update_page',
-      'Rename a page, change its URL slug (menus follow), or set its meta description (search results and link previews, ~160 characters; "" = use the site description).',
-      { page: pageRef, title: z.string().optional(), slug: z.string().optional(), description: z.string().optional() },
-      ({ page, title, slug, description }) =>
+      'Rename a page (its menu label), change its URL slug (menus follow), set its meta description (search results and link previews, ~160 characters; "" = use the site description) or its seo_title (the browser tab / search result title, ~60 characters; "" = "Page – Site", or the site name on the front page).',
+      { page: pageRef, title: z.string().optional(), slug: z.string().optional(), description: z.string().optional(), seo_title: z.string().optional() },
+      ({ page, title, slug, description, seo_title }) =>
         change(`Updated page ${page}`, (site) => {
           const p = findPage(site, page);
-          const next = e.updatePage(site, p.id, { title, slug, description });
+          const next = e.updatePage(site, p.id, { title, slug, description, seoTitle: seo_title });
           const q = next.pages.find((x: any) => x.id === p.id)!;
-          return { site: next, result: { page: { id: q.id, title: q.title, slug: q.slug, description: q.description ?? null } } };
+          return { site: next, result: { page: { id: q.id, title: q.title, slug: q.slug, description: q.description ?? null, documentTitle: e.documentTitle(next, q) } } };
         }),
     );
 
     tool(
       'set_seo',
-      'Search & sharing settings for the published site: url (its public address, e.g. https://example.com; used for canonical links and sitemap.xml), description (default meta description), image (social sharing image: /uploads/… or https://…), favicon (/uploads/… PNG/ICO or https://…), noindex (true asks search engines not to index). "" clears a field.',
+      'Search & sharing settings for the published site: url (its public address, e.g. https://example.com; used for canonical links and sitemap.xml), description (default meta description), image (social sharing image, ~1200×630), favicon (the browser tab icon: square PNG or ICO), noindex (true asks search engines not to index). image/favicon take a media library URL (/uploads/…, from upload_media, import_media or list_media) or a public https:// link, which is downloaded into the media library first. "" clears a field. The site title is set_site_info; per-page titles are update_page.',
       { url: z.string().optional(), description: z.string().optional(), image: z.string().optional(), favicon: z.string().optional(), noindex: z.boolean().optional() },
-      (args) =>
-        change('Changed search & sharing settings', (site) => {
+      async (args) => {
+        // Linked images become library files, so the published site never hotlinks them.
+        const imported: Record<string, string> = {};
+        for (const k of ['image', 'favicon'] as const) {
+          const v = args[k]?.trim();
+          if (!v || !/^https?:\/\//i.test(v) || !ctx.importMedia) continue;
+          const r = await ctx.importMedia(v).catch((err: any) => {
+            throw new Error(`${k === 'image' ? 'Social image' : 'Favicon'}: ${err?.message ?? err}`);
+          });
+          args = { ...args, [k]: r.url };
+          imported[k] = r.url;
+        }
+        return change('Changed search & sharing settings', (site) => {
           const seo = e.mergeSeo(site.seo, args);
-          return { site: { ...site, seo }, result: { seo: seo ?? {} } };
-        }),
+          return { site: { ...site, seo }, result: { seo: seo ?? {}, ...(Object.keys(imported).length ? { imported } : {}) } };
+        });
+      },
     );
 
     tool(
@@ -667,15 +681,82 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
       },
     );
 
-    tool('list_media', 'Files in the site’s media library (local URLs to use in image/cover/media-text blocks).', {}, async () => {
+    tool(
+      'upload_media',
+      `Add a file to the site’s media library: an image (PNG, JPEG, GIF, WebP, AVIF), favicon (ICO, PNG), video (MP4, WebM), audio (MP3) or PDF, at most 50 MB. Give its bytes as base64 in data (with a file name), ${ctx.localFiles ? 'or path: a file on this computer (absolute path)' : 'or use import_media for a public URL'}. Returns the /uploads/… URL to use in blocks (core/image url, core/cover url, core/media-text mediaUrl), set_seo image/favicon or custom block image attributes. Identical files are stored once. SVG is refused (it can carry scripts).`,
+      {
+        data: z.string().optional().describe('The file, base64-encoded (a data: URL works too)'),
+        ...(ctx.localFiles ? { path: z.string().optional().describe('Absolute path of a file on this computer') } : {}),
+        name: z.string().optional().describe('File name, e.g. "team-photo.jpg": becomes the library file name'),
+      },
+      async ({ data, path, name }: { data?: string; path?: string; name?: string }) => {
+        if (!ctx.uploadsDir) throw new Error('The media library is not available here');
+        const { storeMedia } = await import('./media.ts');
+        if (!!data === !!path) throw new Error(ctx.localFiles ? 'Give either data (base64) or path' : 'Give data (base64); for a web link use import_media');
+        let buf: Uint8Array;
+        let fileName = name ?? '';
+        if (path) {
+          if (!ctx.localFiles) throw new Error('Reading files from this computer is only possible over stdio (prepress mcp)');
+          const { statSync, readFileSync } = await import('node:fs');
+          const { basename, isAbsolute } = await import('node:path');
+          if (!isAbsolute(path)) throw new Error('path must be absolute');
+          const st = statSync(path, { throwIfNoEntry: false });
+          if (!st?.isFile()) throw new Error(`No file at ${path}`);
+          if (st.size > 50 * 1024 * 1024) throw new Error('File is larger than 50 MB');
+          buf = readFileSync(path);
+          fileName ||= basename(path);
+        } else {
+          const b64 = data!.replace(/^data:[^,]*;base64,/, '').replace(/\s+/g, '');
+          if (!/^[A-Za-z0-9+/_-]*={0,2}$/.test(b64)) throw new Error('data is not base64');
+          buf = Buffer.from(b64, 'base64');
+        }
+        const r = storeMedia(ctx.uploadsDir, buf, fileName);
+        return { url: r.url, file: r.file, bytes: buf.length, alreadyInLibrary: r.reused };
+      },
+    );
+
+    /** Where the site uses a library file: pages, header/footer, patterns, custom block templates, search & sharing. */
+    const mediaUsage = (site: Site, file: string): string[] => {
+      const ref = `/uploads/${file}`;
+      const where: string[] = [];
+      for (const p of site.pages) if (p.content.includes(ref)) where.push(`page:${p.slug}`);
+      if (site.header.includes(ref)) where.push('header');
+      if (site.footer.includes(ref)) where.push('footer');
+      for (const p of site.patterns ?? []) if (p.content.includes(ref)) where.push(`pattern:${p.slug}`);
+      for (const b of site.blocks ?? []) if (JSON.stringify(b).includes(ref)) where.push(`block:${b.name}`);
+      if (site.seo?.image === ref) where.push('seo.image');
+      if (site.seo?.favicon === ref) where.push('seo.favicon');
+      if (JSON.stringify(site.themeJson ?? {}).includes(ref)) where.push('theme.json');
+      return where;
+    };
+
+    tool('list_media', 'Files in the site’s media library: local URLs to use in image/cover/media-text blocks and set_seo, size, and where the site uses each (usedIn; empty = unused).', {}, async () => {
       if (!ctx.uploadsDir) return { files: [] };
       const { readdirSync, statSync } = await import('node:fs');
       const { join } = await import('node:path');
+      const { site } = draft();
       const files = readdirSync(ctx.uploadsDir)
-        .filter((f) => /\.(png|jpe?g|gif|webp|avif|mp4|webm|mp3|pdf)$/i.test(f))
-        .map((f) => ({ url: `/uploads/${f}`, bytes: statSync(join(ctx.uploadsDir!, f)).size }));
+        .filter((f) => /\.(png|jpe?g|gif|webp|avif|mp4|webm|mp3|pdf|ico)$/i.test(f))
+        .map((f) => ({ url: `/uploads/${f}`, bytes: statSync(join(ctx.uploadsDir!, f)).size, usedIn: mediaUsage(site, f) }));
       return { files };
     }, true);
+
+    tool(
+      'delete_media',
+      'Delete a file from the site’s media library (file name or /uploads/… URL). Refused while the site uses it (see list_media usedIn) unless force is true; forced, the blocks keep a broken link until you change them. The published site keeps its copy until the next publish.',
+      { file: z.string(), force: z.boolean().optional() },
+      async ({ file, force }) => {
+        if (!ctx.uploadsDir) throw new Error('The media library is not available here');
+        const { existsSync, unlinkSync } = await import('node:fs');
+        const { basename, join } = await import('node:path');
+        const name = basename(file.replace(/^\/uploads\//, ''));
+        if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name) || !existsSync(join(ctx.uploadsDir, name))) throw new Error(`No file ${name} in the media library (see list_media)`);
+        const usedIn = mediaUsage(draft().site, name);
+        if (usedIn.length && !force) throw new Error(`${name} is used in ${usedIn.join(', ')}: replace it there first, or pass force: true`);
+        unlinkSync(join(ctx.uploadsDir, name));
+        return { ok: true, deleted: `/uploads/${name}`, ...(usedIn.length ? { brokenIn: usedIn } : {}) };
+      },
+    );
 
     tool('export_wordpress', 'Build the WordPress export (block theme with block styles and patterns + content.xml + site.json). blocks: "theme" (default) puts custom blocks inside the theme; "plugin" puts them in a separate <site>-blocks plugin so they survive a theme switch (and the theme meets the WordPress.org directory rules). Returns the zip\'s path on this machine (localPath) and an HTTP download path on the editor server (send the same bearer token).', { blocks: z.enum(['theme', 'plugin']).optional() }, async ({ blocks }) => {
       draft();

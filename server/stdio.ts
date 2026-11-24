@@ -27,6 +27,8 @@ export async function runStdio(opts: CoreOptions & { engine: Engine }) {
     localizeMedia: core.localizeMedia,
     importMedia: core.importer.import,
     uploadsDir: core.uploadsDir,
+    // The AI client started this process on this machine, as this user: it may hand over file paths.
+    localFiles: true,
     viewPage: core.viewPage,
     library: core.library,
   })();

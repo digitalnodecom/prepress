@@ -7,21 +7,25 @@ interface Props {
   page: Page;
   /** Base URL of the published site ('' = this server), null when there is no server. */
   siteUrl: string | null;
-  onUpdate(patch: { title?: string; slug?: string; description?: string }): void;
+  onUpdate(patch: { title?: string; slug?: string; description?: string; seoTitle?: string }): void;
   /** The site-wide description used when this page has none. */
   fallbackDescription?: string;
+  /** The document title used when this page has no SEO title of its own. */
+  defaultTitle?: string;
 }
 
 /** Page settings: title and URL, like the Page tab of the WordPress editor sidebar. */
-export function PagePanel({ page, siteUrl, onUpdate, fallbackDescription }: Props) {
+export function PagePanel({ page, siteUrl, onUpdate, fallbackDescription, defaultTitle }: Props) {
   const [title, setTitle] = useState(page.title);
   const [slug, setSlug] = useState(page.slug);
   const [description, setDescription] = useState(page.description ?? '');
+  const [seoTitle, setSeoTitle] = useState(page.seoTitle ?? '');
   useEffect(() => {
     setTitle(page.title);
     setSlug(page.slug);
     setDescription(page.description ?? '');
-  }, [page.id, page.title, page.slug, page.description]);
+    setSeoTitle(page.seoTitle ?? '');
+  }, [page.id, page.title, page.slug, page.description, page.seoTitle]);
 
   const home = page.slug === HOME_SLUG;
   const commit = () => {
@@ -41,6 +45,20 @@ export function PagePanel({ page, siteUrl, onUpdate, fallbackDescription }: Prop
         ) : (
           <input id="page-slug" className="input mono" value={slug} onChange={(e) => setSlug(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && commit()} />
         )}
+      </div>
+      <div className="field">
+        <label htmlFor="page-seo-title">Title in search results</label>
+        <input
+          id="page-seo-title"
+          className="input"
+          maxLength={120}
+          value={seoTitle}
+          placeholder={defaultTitle}
+          onChange={(e) => setSeoTitle(e.target.value)}
+          onBlur={() => seoTitle !== (page.seoTitle ?? '') && onUpdate({ seoTitle })}
+          onKeyDown={(e) => e.key === 'Enter' && seoTitle !== (page.seoTitle ?? '') && onUpdate({ seoTitle })}
+        />
+        <p className="hint">{seoTitle.length > 60 ? `${seoTitle.length} characters: search engines usually show about 60.` : 'The browser tab, search results and link previews. Empty: the one shown.'}</p>
       </div>
       <div className="field">
         <label htmlFor="page-description">Description</label>

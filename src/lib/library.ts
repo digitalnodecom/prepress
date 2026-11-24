@@ -12,7 +12,7 @@
  * (sanitized templates/CSS), design through sanitizeDesign, theme.json through
  * cleanThemeJsonPatch.
  */
-import { cleanPageDescription } from './siteMeta';
+import { cleanPageDescription, cleanSeoTitle } from './siteMeta';
 import { parse, serialize } from '@wordpress/blocks';
 import type { BlockStyleDef, CustomBlockDef, Design, Page, PatternDef, PatternRole, Site } from './types';
 import { applyDesign, blockUsage, createPattern, defineBlock, getSections, insertSection, patchThemeJson, rebuildParts, uid } from './site';
@@ -291,7 +291,8 @@ export function importLibraryItem(site: Site, item: Pick<LibraryItem, 'type' | '
     while (seen.has(slug)) slug += '-2';
     seen.add(slug);
     const description = cleanPageDescription(pg.description);
-    return { id: uid(), title: clean(pg.title || 'Page', 60), slug, content: cleanMarkup(pg.content, design, undefined, names), ...(description ? { description } : {}) };
+    const seoTitle = cleanSeoTitle(pg.seoTitle);
+    return { id: uid(), title: clean(pg.title || 'Page', 60), slug, content: cleanMarkup(pg.content, design, undefined, names), ...(description ? { description } : {}), ...(seoTitle ? { seoTitle } : {}) };
   });
   const patterns: PatternDef[] = (t.patterns ?? []).slice(0, 50).map((pt) => ({
     id: Number.isInteger(pt.id) && pt.id >= 5000 ? pt.id : 5000,

@@ -27,6 +27,8 @@ export interface Backend {
   siteUrl: string | null;
   /** Name of the site's folder (server mode): a good default site name for a new site. */
   folder?: string;
+  /** Desktop app: its site list (the editor's Prepress logo leads there). */
+  launcher?: string;
 }
 
 const STORAGE_KEY = 'prepress:draft:v1';
@@ -35,7 +37,7 @@ export async function connectBackend(): Promise<Backend> {
   try {
     const r = await fetch('/api/health', { cache: 'no-store' });
     const j = r.ok ? await r.json() : null;
-    if (j?.server) return { kind: 'server', siteUrl: j.siteUrl ?? null, folder: j.folder };
+    if (j?.server) return { kind: 'server', siteUrl: j.siteUrl ?? null, folder: j.folder, ...(typeof j.launcher === 'string' ? { launcher: j.launcher } : {}) };
   } catch {
     /* no server */
   }

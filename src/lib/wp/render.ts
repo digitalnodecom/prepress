@@ -19,7 +19,7 @@ import { ensureBlocks } from './registry';
 import { templates, HOME_SLUG } from './templates';
 import { fillTemplate, isCustomBlock, sanitizeCss } from './customBlocks';
 import { compileBlockStyles } from './blockStyles';
-import { headMeta, liveBodyEnd, liveHead } from '../siteMeta';
+import { documentTitle, headMeta, liveBodyEnd, liveHead } from '../siteMeta';
 
 interface RawBlock {
   blockName: string | null;
@@ -388,7 +388,7 @@ export function renderPage(site: Site, page: Page, opts: RenderOptions = {}): st
     .join('\n');
   const fonts = googleFontsUrl(site.design);
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(page.title)} – ${esc(site.name)}</title>
+<title>${esc(documentTitle(site, page))}</title>
 ${headMeta(site, page, opts.siteUrl)}
 ${fonts ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="${fonts}">` : ''}
 <style id="wp-block-library">${blockLibraryCss}</style>

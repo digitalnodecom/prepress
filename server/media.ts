@@ -28,6 +28,7 @@ export const IMPORT_TYPES: Record<string, string> = {
   'video/webm': '.webm',
   'audio/mpeg': '.mp3',
   'application/pdf': '.pdf',
+  'image/x-icon': '.ico',
 };
 
 const MAX_BYTES = 50 * 1024 * 1024;
@@ -44,6 +45,8 @@ export function sniff(b: Uint8Array): string | null {
   if (b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3) return 'video/webm';
   if (s(0, 'ID3') || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0)) return 'audio/mpeg';
   if (s(0, '%PDF')) return 'application/pdf';
+  // ICO: reserved 0, type 1 (icon), 1–255 images.
+  if (b[0] === 0 && b[1] === 0 && b[2] === 1 && b[3] === 0 && b[4] > 0 && b[5] === 0) return 'image/x-icon';
   return null;
 }
 
@@ -78,6 +81,34 @@ export interface ImportResult {
   file: string;
   /** Already in the library (same link or same file). */
   reused: boolean;
+}
+
+/**
+ * Put a file into the media library (<uploadsDir>): its type from its first bytes (no SVG or
+ * HTML), named <stem>-<content hash><ext>, stored once however often it is added.
+ * `declared` is the type the source claimed, for the error message only.
+ */
+export function storeMedia(uploadsDir: string, buf: Uint8Array, name: string, declared = ''): ImportResult {
+  if (buf.length > MAX_BYTES) throw new Error('File is larger than 50 MB');
+  if (!buf.length) throw new Error('The file is empty');
+  const type = sniff(buf);
+  if (!type) {
+    const svg = declared === 'image/svg+xml' || /\.svg$/i.test(name);
+    throw new Error(svg ? 'SVG images are not imported (they can contain scripts); use PNG, JPEG, WebP or AVIF' : `Not an image, video, audio, PDF or icon file${declared ? ` (${declared})` : ''}`);
+  }
+  const ext = IMPORT_TYPES[type];
+  const stem = name.replace(/\.[a-z0-9]+$/i, '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'media';
+  const hash = createHash('sha256').update(buf).digest('hex').slice(0, 10);
+  // The same file under another name is already in the library: reuse it.
+  const existing = readdirSync(uploadsDir).find((f) => f.endsWith(`-${hash}${ext}`));
+  const file = existing ?? `${stem}-${hash}${ext}`;
+  if (!existing) {
+    const target = join(uploadsDir, file);
+    const tmp = `${target}.${process.pid}.tmp`;
+    writeFileSync(tmp, buf);
+    renameSync(tmp, target);
+  }
+  return { url: `/uploads/${file}`, file, reused: !!existing };
 }
 
 export function createMediaImporter(opts: { dataDir: string; uploadsDir: string; resolve?: (host: string) => Promise<string[]>; fetch?: typeof fetch }) {
@@ -144,26 +175,10 @@ export function createMediaImporter(opts: { dataDir: string; uploadsDir: string;
       chunks.push(value);
     }
     const buf = Buffer.concat(chunks);
-    const type = sniff(buf);
-    if (!type) {
-      const ct = (res.headers.get('content-type') ?? '').split(';')[0].trim();
-      throw new Error(ct === 'image/svg+xml' ? 'SVG images are not imported (they can contain scripts); use PNG, JPEG, WebP or AVIF' : `Not an image, video, audio or PDF file${ct ? ` (${ct})` : ''}`);
-    }
-    const ext = IMPORT_TYPES[type];
-    const stem = decodeURIComponent(at.pathname.split('/').pop() ?? '').replace(/\.[a-z0-9]+$/i, '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'media';
-    const hash = createHash('sha256').update(buf).digest('hex').slice(0, 10);
-    // The same file under another name is already in the library: reuse it.
-    const existing = readdirSync(opts.uploadsDir).find((f) => f.endsWith(`-${hash}${ext}`));
-    const file = existing ?? `${stem}-${hash}${ext}`;
-    const target = join(opts.uploadsDir, file);
-    const reused = !!existing;
-    if (!reused) {
-      const tmp = `${target}.${process.pid}.tmp`;
-      writeFileSync(tmp, buf);
-      renameSync(tmp, target);
-    }
-    remember(url.href, file);
-    return { url: `/uploads/${file}`, file, reused };
+    const ct = (res.headers.get('content-type') ?? '').split(';')[0].trim();
+    const r = storeMedia(opts.uploadsDir, buf, decodeURIComponent(at.pathname.split('/').pop() ?? ''), ct);
+    remember(url.href, r.file);
+    return r;
   }
 
   return {

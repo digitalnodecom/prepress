@@ -201,6 +201,12 @@ export function mergeSeo(cur: SiteSeo | undefined, patch: Partial<Record<keyof S
 }
 
 export const cleanPageDescription = (raw: unknown) => plain(raw, 300);
+export const cleanSeoTitle = (raw: unknown) => plain(raw, 120);
+
+/** A page's document title: its own SEO title, else the site name (front page) or "Title – Site". */
+export function documentTitle(site: Site, page: Page): string {
+  return page.seoTitle || (page.slug === HOME_SLUG ? site.name : `${page.title} – ${site.name}`);
+}
 
 export function mergeConsent(cur: ConsentSettings | undefined, patch: Partial<Record<keyof ConsentSettings, unknown>>): ConsentSettings | undefined {
   const next: ConsentSettings = { ...(cur ?? {}) };
@@ -231,7 +237,7 @@ export function headMeta(site: Site, page: Page, siteUrl?: string): string {
   const seo = site.seo ?? {};
   const base = (siteUrl ?? seo.url ?? '').replace(/\/+$/, '') || undefined;
   const desc = page.description || seo.description || site.tagline || '';
-  const title = page.slug === HOME_SLUG ? site.name : `${page.title} – ${site.name}`;
+  const title = documentTitle(site, page);
   const out: string[] = [];
   if (desc) out.push(`<meta name="description" content="${esc(desc)}">`);
   if (seo.noindex) out.push('<meta name="robots" content="noindex">');
@@ -319,7 +325,7 @@ export function publicSite(site: Site): Partial<Site> {
     name: site.name,
     tagline: site.tagline,
     design: site.design,
-    pages: site.pages.map((p) => ({ id: p.id, title: p.title, slug: p.slug, content: p.content, ...(p.description ? { description: p.description } : {}) })),
+    pages: site.pages.map((p) => ({ id: p.id, title: p.title, slug: p.slug, content: p.content, ...(p.description ? { description: p.description } : {}), ...(p.seoTitle ? { seoTitle: p.seoTitle } : {}) })),
     header: site.header,
     footer: site.footer,
   };

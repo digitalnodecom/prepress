@@ -61,6 +61,8 @@ export interface ServerOptions {
    * its own): AI clients connect to /mcp with the bearer token.
    */
   runtime?: 'desktop' | 'server';
+  /** Desktop app: its site list page (PREPRESS_LAUNCHER_URL), where the editor's Prepress logo leads. Only the app's own page addresses are accepted. */
+  launcherUrl?: string;
   /** Enables server-side publish/export and the MCP endpoint. */
   engine?: Engine;
   /** Fixed bearer token for /mcp. Default: generated into <data>/mcp-token.txt. */
@@ -95,8 +97,9 @@ const MIME: Record<string, string> = {
   '.webm': 'video/webm',
   '.mp3': 'audio/mpeg',
   '.pdf': 'application/pdf',
+  '.ico': 'image/x-icon',
 };
-const UPLOAD_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.mp4', '.webm', '.mp3', '.pdf']);
+const UPLOAD_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.mp4', '.webm', '.mp3', '.pdf', '.ico']);
 const MAX_UPLOAD = 50 * 1024 * 1024;
 const MAX_JSON = 100 * 1024 * 1024;
 
@@ -288,6 +291,8 @@ export function createHandler(opts: ServerOptions) {
   store.watch();
   const isAdmin = (url: URL) => url.searchParams.get('admin') === '1';
   const runtime = opts.runtime ?? 'server';
+  // The desktop app's bundled launcher page (tauri://localhost on macOS/Linux, http://tauri.localhost on Windows): nothing else.
+  const launcher = runtime === 'desktop' && /^(tauri:\/\/localhost|http:\/\/tauri\.localhost)\/index\.html(#[a-z]*)?$/.test(opts.launcherUrl ?? '') ? opts.launcherUrl : undefined;
   const clients = runtime === 'desktop' && opts.stdioCommand ? createClients({ dataDir: dir, stdio: opts.stdioCommand, home: opts.homeDir }) : null;
   // The desktop app's AI connection is stdio; no network endpoint needed.
   const mcpEnabled = !!opts.engine && opts.mcp !== false && runtime !== 'desktop';
@@ -320,7 +325,7 @@ export function createHandler(opts: ServerOptions) {
     }
 
     if (route === 'GET /api/health') {
-      return json(res, 200, { server: true, runtime, siteUrl: opts.siteUrl ?? null, folder: basename(resolve(dir)) });
+      return json(res, 200, { server: true, runtime, siteUrl: opts.siteUrl ?? null, folder: basename(resolve(dir)), ...(launcher ? { launcher } : {}) });
     }
     if (req.method === 'GET' && url.pathname.startsWith('/api/exports/')) {
       const file = join(exportsDir, basename(decodeURIComponent(url.pathname.slice('/api/exports/'.length))));
