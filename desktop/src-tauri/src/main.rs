@@ -266,6 +266,9 @@ fn start_server(app: &AppHandle, path: &Path) -> Result<Running, String> {
         .env("PREPRESS_APP", "desktop")
         // The editor's Prepress logo leads back to the site list.
         .env("PREPRESS_LAUNCHER_URL", launcher_url("sites").to_string())
+        // The all-sites AI connection (`prepress mcp --sites`): the sites folder and the recent list.
+        .env("PREPRESS_SITES_DIR", sites_folder(app.clone()))
+        .env("PREPRESS_RECENT_SITES", config_file(app))
         .stdin(Stdio::null())
         .stdout(out)
         .stderr(err);

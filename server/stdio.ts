@@ -2,7 +2,8 @@
  * `prepress mcp` — the MCP server over stdio, for AI clients on the same
  * machine (Claude Desktop, Claude Code, …), which start it as a subprocess:
  *
- *   claude mcp add prepress -- prepress mcp --data ~/Sites/example
+ *   claude mcp add prepress -- prepress mcp --data ~/Sites/example      (one site)
+ *   claude mcp add prepress -- prepress mcp --sites ~/Documents/Prepress  (every site in a folder)
  *
  * Same tools as /mcp on the editor server, working directly on the data
  * folder. It may run while the editor is open on the same folder: writes are
@@ -12,6 +13,7 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createSiteCore, type CoreOptions, type Engine } from './app.ts';
 import { mcpServerFactory } from './mcp.ts';
+import { allSitesContext } from './sites.ts';
 import { VERSION } from './version.ts';
 
 export async function runStdio(opts: CoreOptions & { engine: Engine }) {
@@ -37,4 +39,15 @@ export async function runStdio(opts: CoreOptions & { engine: Engine }) {
   // The client closing our stdin is how a stdio MCP session ends.
   process.stdin.on('end', () => process.exit(0));
   console.error(`Prepress ${VERSION} MCP on stdio · data ${core.dir} · publish ${core.outDir}`);
+}
+
+/**
+ * `prepress mcp --sites <folder> [--recent <sites.json>]`: one connection for all sites (server/sites.ts).
+ * The AI opens a site per session with open_site; the site tools then work on it.
+ */
+export async function runStdioSites(opts: { root: string; recentFile?: string; engine: Engine }) {
+  const server = mcpServerFactory(allSitesContext(opts))();
+  await server.connect(new StdioServerTransport());
+  process.stdin.on('end', () => process.exit(0));
+  console.error(`Prepress ${VERSION} MCP on stdio · all sites in ${opts.root}`);
 }

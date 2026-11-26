@@ -4,6 +4,11 @@ import '@wordpress/block-editor/build-style/style.css';
 import '@wordpress/block-library/build-style/editor.css';
 import '@wordpress/format-library/build-style/style.css';
 import { App } from './ui/App';
+import { ErrorBoundary } from './ui/ErrorBoundary';
 import './ui/styles.css';
 
-createRoot(document.getElementById('root')!).render(<App />);
+createRoot(document.getElementById('root')!).render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>,
+);

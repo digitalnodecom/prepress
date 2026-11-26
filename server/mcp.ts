@@ -40,6 +40,8 @@ export interface McpContext {
   library?: import('./library.ts').LibraryClient;
   /** Screenshot a draft page in a headless browser (server/screenshot.ts). */
   viewPage?(o: { page: any; device?: 'desktop' | 'tablet' | 'phone'; section?: number; fullPage?: boolean }): Promise<{ data: string; mimeType: string; width: number; height: number; pageHeight: number; scale: number; sections: number }>;
+  /** The all-sites connection (server/sites.ts): list_sites / open_site / new_site and how to use them. */
+  sites?: { instructions: string; register(tool: import('./sites.ts').SiteTool): void };
 }
 
 type Site = any;
@@ -168,9 +170,12 @@ export function mcpServerFactory(ctx: McpContext): () => McpServer {
     };
 
   function build() {
-    const server = new McpServer({ name: 'prepress', version: VERSION }, { instructions: INSTRUCTIONS });
+    const server = new McpServer({ name: 'prepress', version: VERSION }, { instructions: ctx.sites ? `${ctx.sites.instructions}\n\n${INSTRUCTIONS}` : INSTRUCTIONS });
     const tool = (name: string, description: string, inputSchema: Record<string, z.ZodTypeAny>, fn: (args: any) => unknown, readOnly = false) =>
       server.registerTool(name, { description, inputSchema, annotations: { readOnlyHint: readOnly, destructiveHint: !readOnly && /delete|reset/.test(name) } }, wrap(fn) as any);
+
+    // ---------- sites (the all-sites connection only) ----------
+    ctx.sites?.register(tool);
 
     // ---------- read ----------
     tool('get_site', 'Overview: name, tagline, pages, header/footer status, custom blocks, patterns, publish info, revision.', {}, () => {

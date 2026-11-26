@@ -4,7 +4,14 @@ import { CheckCircle2, ChevronRight, Copy, Eye, EyeOff, Plug, RefreshCw, Unplug 
 /** GET /api/mcp: how AI clients connect, depending on where Prepress runs. */
 type McpInfo =
   /** Desktop app: the AI client starts `prepress mcp` itself (stdio). */
-  | { mode: 'stdio'; stdio: { command: string; args: string[] } | null; name: string | null; clients: AiApp[] }
+  | {
+      mode: 'stdio';
+      stdio: { command: string; args: string[] } | null;
+      name: string | null;
+      clients: AiApp[];
+      /** One connection for every site (`prepress mcp --sites`): the AI picks the site per session. */
+      all: { stdio: { command: string; args: string[] }; name: string; clients: AiApp[] } | null;
+    }
   /** Prepress on a server / standalone binary: HTTP endpoint + bearer token. */
   | { mode: 'http'; enabled: boolean; token: string | null; fixed: boolean };
 
@@ -30,6 +37,7 @@ export function McpPanel() {
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<{ id: string; ok: boolean; text: string } | null>(null);
+  const [scope, setScope] = useState<'all' | 'site' | null>(null);
 
   const load = () =>
     fetch('/api/mcp', { cache: 'no-store' })
@@ -50,11 +58,16 @@ export function McpPanel() {
     }
   };
 
+  // All sites when this build offers it, unless the owner picked "Only this site" (or only that is connected).
+  const stdioInfo = info?.mode === 'stdio' ? info : null;
+  const onlySiteConnected = !!stdioInfo?.clients.some((a) => a.connected) && !stdioInfo?.all?.clients.some((a) => a.connected);
+  const current: 'all' | 'site' = stdioInfo?.all ? (scope ?? (onlySiteConnected ? 'site' : 'all')) : 'site';
+
   const setApp = async (app: AiApp, action: 'connect' | 'disconnect') => {
     setBusy(app.id);
     setNote(null);
     try {
-      const r = await fetch('/api/mcp/clients', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: app.id, action }) });
+      const r = await fetch('/api/mcp/clients', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: app.id, action, scope: current }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
       setNote({ id: app.id, ok: true, text: action === 'connect' ? `Added to ${app.name}. ${app.after}` : `Removed from ${app.name}.` });
@@ -77,7 +90,7 @@ export function McpPanel() {
 
   const intro = (
     <p className="hint">
-      Connect an AI (Claude Desktop, Claude Code, any MCP client) to write and change this site: pages and sections, header/footer, styles, theme.json, custom blocks and patterns — and publish it. The editor updates live while it works.
+      Connect an AI (Claude Desktop, Claude Code, any MCP client) to write and change {current === 'all' ? 'your sites' : 'this site'}: pages and sections, header/footer, styles, theme.json, custom blocks and patterns — and publish it. The editor updates live while it works.
     </p>
   );
 
@@ -90,10 +103,14 @@ export function McpPanel() {
   }
 
   if (info.mode === 'stdio') {
-    const local = info.stdio;
-    const command = local ? `claude mcp add prepress -- ${[local.command, ...local.args].map(shq).join(' ')}` : '';
-    const desktopJson = local ? JSON.stringify({ mcpServers: { [info.name ?? 'prepress']: { command: local.command, args: local.args } } }, null, 2) : '';
-    const apps = [...info.clients].sort((x, y) => Number(y.installed || y.connected) - Number(x.installed || x.connected));
+    const all = current === 'all' ? info.all : null;
+    const local = all ? all.stdio : info.stdio;
+    const entry = (all ? all.name : info.name) ?? 'prepress';
+    const command = local ? `claude mcp add ${entry} -- ${[local.command, ...local.args].map(shq).join(' ')}` : '';
+    const desktopJson = local ? JSON.stringify({ mcpServers: { [entry]: { command: local.command, args: local.args } } }, null, 2) : '';
+    const apps = [...(all ? all.clients : info.clients)].sort((x, y) => Number(y.installed || y.connected) - Number(x.installed || x.connected));
+    const other = all ? info.clients : info.all?.clients ?? [];
+    const alsoOther = other.filter((a) => a.connected).map((a) => a.name);
     return (
       <>
         {intro}
@@ -101,6 +118,18 @@ export function McpPanel() {
           <p className="hint">Not available in this build.</p>
         ) : (
           <>
+            {info.all && (
+              <div className="seg ai-scope" role="group" aria-label="What the AI can reach">
+                <button aria-pressed={current === 'all'} onClick={() => { setScope('all'); setNote(null); }}>All my sites</button>
+                <button aria-pressed={current === 'site'} onClick={() => { setScope('site'); setNote(null); }}>Only this site</button>
+              </div>
+            )}
+            <p className="hint">
+              {all
+                ? 'One connection for every site in your Prepress folder. In each chat the AI lists your sites and opens the one you mean; it can also start a new one.'
+                : 'A connection for this site only: the AI can’t see or change your other sites.'}
+              {alsoOther.length > 0 && ` Also connected ${all ? 'to this site alone' : 'to all sites'} in: ${alsoOther.join(', ')}.`}
+            </p>
             <div className="ai-apps">
               {apps.map((app) => (
                 <div key={app.id} className={`ai-app${app.installed || app.connected ? '' : ' absent'}`}>
@@ -114,10 +143,10 @@ export function McpPanel() {
                   {app.connected ? (
                     <>
                       {app.outdated && <button className="btn small primary" disabled={!!busy} onClick={() => setApp(app, 'connect')}><RefreshCw size={14} /> Update</button>}
-                      <button className="btn small ghost" disabled={!!busy} onClick={() => setApp(app, 'disconnect')} title={`Remove this site from ${app.file}`}><Unplug size={14} /> Disconnect</button>
+                      <button className="btn small ghost" disabled={!!busy} onClick={() => setApp(app, 'disconnect')} title={`Remove “${entry}” from ${app.file}`}><Unplug size={14} /> Disconnect</button>
                     </>
                   ) : (
-                    <button className={`btn small ${app.installed ? 'primary' : ''}`} disabled={!!busy || !!app.problem} onClick={() => setApp(app, 'connect')} title={`Adds “${info.name}” to ${app.file}`}>
+                    <button className={`btn small ${app.installed ? 'primary' : ''}`} disabled={!!busy || !!app.problem} onClick={() => setApp(app, 'connect')} title={`Adds “${entry}” to ${app.file}`}>
                       <Plug size={14} /> {busy === app.id ? 'Connecting…' : 'Connect'}
                     </button>
                   )}
@@ -126,7 +155,7 @@ export function McpPanel() {
                 </div>
               ))}
             </div>
-            <p className="hint">Connect adds this site as <span className="mono">{info.name}</span> to the app’s MCP settings (other settings are kept; the original file is saved next to it as <span className="mono">.before-prepress</span>). The app then starts Prepress for this site itself: no port, no token, nothing leaves this computer except what you publish.</p>
+            <p className="hint">Connect adds <span className="mono">{entry}</span> to the app’s MCP settings (other settings are kept; the original file is saved next to it as <span className="mono">.before-prepress</span>). The app then starts Prepress itself: no port, no token, nothing leaves this computer except what you publish.{all && ' The AI can’t delete, move or rename sites; scripts stay off until you allow them per site (Analytics & code).'}</p>
 
             <details className="ai-manual">
               <summary>Other apps / set up by hand <ChevronRight size={14} /></summary>

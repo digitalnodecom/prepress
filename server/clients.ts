@@ -5,7 +5,8 @@
  * Edits are surgical — other servers, comments and formatting are kept — and
  * the first time Prepress changes a file it keeps a copy next to it
  * (`<file>.before-prepress`). Each site gets its own entry, named
- * `prepress-<site folder>`, so several sites can be connected at once.
+ * `prepress-<site folder>`, so several sites can be connected at once. The all-sites
+ * connection (`prepress mcp --sites`, server/sites.ts) is one entry named `prepress`.
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -115,10 +116,13 @@ export const CLIENTS: ClientDef[] = [
   },
 ];
 
+/** The entry name of the all-sites connection. */
+export const ALL_SITES_NAME = 'prepress';
+
 /** The entry name for a site: prepress-<folder>. */
 export function serverName(dataDir: string): string {
   const slug = basename(dataDir).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
-  return `prepress${slug ? `-${slug}` : ''}`;
+  return `prepress-${slug || 'site'}`; // never plain "prepress": that's the all-sites entry
 }
 
 // ---------- file helpers ----------
@@ -300,10 +304,11 @@ const ADAPTERS: Record<Format, Adapter> = {
 
 // ---------- API ----------
 
-export function createClients(opts: { dataDir: string; stdio: StdioCommand; home?: string; env?: NodeJS.ProcessEnv }) {
+/** `name`: the entry's name (default: this site's, from dataDir). */
+export function createClients(opts: { dataDir?: string; name?: string; stdio: StdioCommand; home?: string; env?: NodeJS.ProcessEnv }) {
   const home = opts.home ?? homedir();
   const env = opts.env ?? process.env;
-  const name = serverName(opts.dataDir);
+  const name = opts.name ?? serverName(opts.dataDir ?? '');
   const same = (e: Entry | null) => !!e && e.command === opts.stdio.command && JSON.stringify(e.args) === JSON.stringify(opts.stdio.args);
 
   function status(c: ClientDef): ClientStatus {

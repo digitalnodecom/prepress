@@ -2,7 +2,8 @@
  * Prepress standalone server — the entry point compiled into the binary.
  *
  *   prepress [--port 8080] [--data ./prepress-data] [--out ./prepress-data/public] [--site-url https://example.com]
- *   prepress mcp --data <dir>          (MCP over stdio, server/stdio.ts)
+ *   prepress mcp --data <dir>          (MCP over stdio for one site, server/stdio.ts)
+ *   prepress mcp --sites <dir> [--recent <file>]   (MCP over stdio for every site in a folder, server/sites.ts)
  *   prepress site --data <dir> [--name <title>]   (show or rename a site; the desktop app's site list)
  *
  * Local only: listens on 127.0.0.1 without a password (see server/app.ts).
@@ -17,7 +18,7 @@ import { createServer } from 'node:http';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { createHandler } from './app.ts';
-import { runStdio } from './stdio.ts';
+import { runStdio, runStdioSites } from './stdio.ts';
 import { listTargets } from './deploy.ts';
 import { VERSION } from './version.ts';
 // Headless site engine, bundled by `vite build --ssr` (see package.json build:engine).
@@ -57,6 +58,18 @@ function stdioCommand() {
   // Compiled binary: execPath is prepress itself. `bun server/main.ts`: execPath is bun + the script.
   const self = /^(bun|node)(\.exe)?$/i.test(basename(process.execPath)) ? [process.execPath, resolve(process.argv[1])] : [process.execPath];
   return { command: self[0], args: [...self.slice(1), 'mcp', '--data', dataDir, '--out', outDir, ...(siteUrl ? ['--site-url', siteUrl] : [])] };
+}
+/**
+ * The all-sites connection (`prepress mcp --sites`), offered when the desktop app says where its
+ * sites folder (PREPRESS_SITES_DIR) and its recent-sites list (PREPRESS_RECENT_SITES) are.
+ */
+function allSitesCommand() {
+  const sites = process.env.PREPRESS_SITES_DIR;
+  if (!sites) return undefined;
+  const recent = process.env.PREPRESS_RECENT_SITES;
+  const local = stdioCommand();
+  const self = local.args.slice(0, local.args.indexOf('mcp'));
+  return { command: local.command, args: [...self, 'mcp', '--sites', resolve(sites), ...(recent ? ['--recent', resolve(recent)] : [])] };
 }
 
 // `prepress mcp …` = MCP over stdio (server/stdio.ts); anything else runs the editor server.
@@ -108,12 +121,28 @@ prepress mcp --data <dir> [--out <dir>] [--site-url <url>]
   MCP server on stdin/stdout for AI clients on this machine (Claude Desktop,
   Claude Code). Same tools as /mcp, no port or token. Can run while the editor
   is open on the same --data folder; use the same --out. Example:
-    claude mcp add prepress -- prepress mcp --data ~/Sites/example`);
+    claude mcp add prepress -- prepress mcp --data ~/Sites/example
+
+prepress mcp --sites <dir> [--recent <sites.json>]
+  One MCP connection for every site folder in <dir> (and the desktop app's
+  recent sites): the AI calls list_sites, then open_site, then the usual tools.
+    claude mcp add prepress -- prepress mcp --sites ~/Documents/Prepress`);
   process.exit(0);
 }
 
-if (stdio && !(args.data ?? process.env.PREPRESS_DATA)) {
-  console.error('prepress mcp: pass --data <folder> (or PREPRESS_DATA). AI clients start this from an unknown working directory.');
+if (stdio && args.sites !== undefined) {
+  if (!args.sites) {
+    console.error('prepress mcp --sites: pass the folder that holds the site folders.');
+    process.exit(2);
+  }
+  try {
+    await runStdioSites({ root: resolve(args.sites), recentFile: args.recent ? resolve(args.recent) : undefined, engine: engine as any });
+  } catch (e: any) {
+    console.error(String(e?.message ?? e));
+    process.exit(1);
+  }
+} else if (stdio && !(args.data ?? process.env.PREPRESS_DATA)) {
+  console.error('prepress mcp: pass --data <folder> (one site) or --sites <folder> (all sites). AI clients start this from an unknown working directory.');
   process.exit(2);
 }
 
@@ -143,9 +172,10 @@ if (process.argv[2] === 'site') {
   }
 }
 
-mkdirSync(dataDir, { recursive: true });
-
-if (stdio) {
+if (stdio && args.sites !== undefined) {
+  // The all-sites connection runs above (runStdioSites); it has no data folder of its own.
+} else if (stdio) {
+  mkdirSync(dataDir, { recursive: true });
   try {
     await runStdio({ dataDir, outDir, siteUrl, engine: engine as any });
   } catch (e: any) {
@@ -164,6 +194,7 @@ if (stdio) {
     mcp: !('no-mcp' in args),
     mcpToken: args['mcp-token'] ?? process.env.PREPRESS_MCP_TOKEN ?? undefined,
     stdioCommand: stdioCommand(),
+    allSitesCommand: allSitesCommand(),
     adminHtml,
     runtime: desktop ? 'desktop' : 'server',
     launcherUrl: process.env.PREPRESS_LAUNCHER_URL,

@@ -15,6 +15,7 @@ import { documentTitle } from '../lib/siteMeta';
 import { connectBackend, libraryGet,
   openPublishedSite, loadDraft, publish, saveDraft, siteHash, subscribeChanges, type Backend, type Draft } from '../lib/backend';
 import { registerCustomBlocks } from '../lib/wp/customBlocks';
+import { ErrorBoundary } from './ErrorBoundary';
 import { Preview, type Device } from './Preview';
 import { DesignPanel } from './DesignPanel';
 import { ThemeCssPanel } from './ThemeCssPanel';
@@ -565,6 +566,7 @@ export function App() {
     : 'Saved in this browser';
 
   return (
+    <ErrorBoundary onRecover={() => flash('The editor hit an error and was reloaded. Your work is kept.')}>
     <EditorProvider
       key={`${editingPattern ? `pattern:${editingPattern.id}` : part ? `part:${part}` : page.id}:${blocksKey}:${templateMode ? 'template' : ''}`}
       content={editingPattern ? editingPattern.content : part ? site[part] : page.content}
@@ -848,5 +850,6 @@ export function App() {
         {toast && <div className="toast" role="status">{toast}</div>}
       </div>
     </EditorProvider>
+    </ErrorBoundary>
   );
 }

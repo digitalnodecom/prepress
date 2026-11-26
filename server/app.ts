@@ -37,7 +37,7 @@ import { createMcpHandler } from './mcp.ts';
 import { createDeployer } from './deploy.ts';
 import { VERSION } from './version.ts';
 import { absoluteMedia, fetchPublishedSource } from './openSite.ts';
-import { createClients } from './clients.ts';
+import { ALL_SITES_NAME, createClients } from './clients.ts';
 import { HOSTING_DOMAIN, checkName } from './targets/prepress.ts';
 import { accountsView, disconnect, pollDeviceFlow, startDeviceFlow, type OAuthOptions, type Provider } from './oauth.ts';
 import { createLibraryClient, libraryId } from './library.ts';
@@ -79,6 +79,8 @@ export interface ServerOptions {
   homeDir?: string;
   /** How to start `prepress mcp` (stdio) for this site; shown in the editor. Absent in dev. */
   stdioCommand?: { command: string; args: string[] };
+  /** How to start the all-sites connection (`prepress mcp --sites`, server/sites.ts). Desktop app only. */
+  allSitesCommand?: { command: string; args: string[] };
 }
 
 type Next = () => void;
@@ -313,6 +315,8 @@ export function createHandler(opts: ServerOptions) {
   // The desktop app's bundled launcher page (tauri://localhost on macOS/Linux, http://tauri.localhost on Windows): nothing else.
   const launcher = runtime === 'desktop' && /^(tauri:\/\/localhost|http:\/\/tauri\.localhost)\/index\.html(#[a-z]*)?$/.test(opts.launcherUrl ?? '') ? opts.launcherUrl : undefined;
   const clients = runtime === 'desktop' && opts.stdioCommand ? createClients({ dataDir: dir, stdio: opts.stdioCommand, home: opts.homeDir }) : null;
+  // One entry ("prepress") that reaches every site: the AI picks one per session (open_site).
+  const allClients = runtime === 'desktop' && opts.allSitesCommand ? createClients({ name: ALL_SITES_NAME, stdio: opts.allSitesCommand, home: opts.homeDir }) : null;
   // The desktop app's AI connection is stdio; no network endpoint needed.
   const mcpEnabled = !!opts.engine && opts.mcp !== false && runtime !== 'desktop';
   const tokenFile = join(dir, 'mcp-token.txt');
@@ -388,16 +392,25 @@ export function createHandler(opts: ServerOptions) {
       return json(res, 200, { customCode: body.customCode });
     }
     if (route === 'GET /api/mcp') {
-      if (runtime === 'desktop') return json(res, 200, { mode: 'stdio', stdio: opts.stdioCommand ?? null, name: clients?.name ?? null, clients: clients?.list() ?? [] });
+      if (runtime === 'desktop')
+        return json(res, 200, {
+          mode: 'stdio',
+          stdio: opts.stdioCommand ?? null,
+          name: clients?.name ?? null,
+          clients: clients?.list() ?? [],
+          all: allClients ? { stdio: opts.allSitesCommand, name: allClients.name, clients: allClients.list() } : null,
+        });
       return json(res, 200, { mode: 'http', enabled: mcpEnabled, token: mcpEnabled ? mcpToken : null, fixed: !!opts.mcpToken });
     }
     if (route === 'POST /api/mcp/clients') {
       // Desktop app only: add/remove this site in an AI app's MCP config on this computer.
-      if (!clients) return json(res, 404, { error: 'Only available in the desktop app' });
-      const { id, action } = (await readJson(req)) ?? {};
-      if (typeof id !== 'string' || (action !== 'connect' && action !== 'disconnect')) return json(res, 400, { error: 'Expected { id, action: "connect" | "disconnect" }' });
+      // scope "all": the all-sites entry; "site" (default): this site's own entry.
+      const { id, action, scope } = (await readJson(req)) ?? {};
+      const which = scope === 'all' ? allClients : clients;
+      if (!which) return json(res, 404, { error: 'Only available in the desktop app' });
+      if (typeof id !== 'string' || (action !== 'connect' && action !== 'disconnect') || (scope !== undefined && scope !== 'all' && scope !== 'site')) return json(res, 400, { error: 'Expected { id, action: "connect" | "disconnect", scope?: "all" | "site" }' });
       try {
-        return json(res, 200, { client: action === 'connect' ? clients.connect(id) : clients.disconnect(id) });
+        return json(res, 200, { client: action === 'connect' ? which.connect(id) : which.disconnect(id) });
       } catch (e: any) {
         return json(res, e?.status ?? 400, { error: String(e?.message ?? e) });
       }

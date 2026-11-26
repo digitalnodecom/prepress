@@ -135,12 +135,35 @@ export function EditorProvider({ content, design, canUpload, info, blocks: custo
   const timer = useRef<number | undefined>(undefined);
   const pending = useRef<(() => void) | null>(null);
 
+  /** The block editor's own registry (BlockEditorProvider makes a sub-registry), set by <GrabRegistry>. */
+  const registry = useRef<any>(null);
+
+  /**
+   * Run `swap` (new blocks or a new canvas document) without a block selected. A selected block's
+   * toolbar popover measures the block's element; if that element is gone (new clientIds) or lives
+   * in the old canvas document, floating-ui throws and the window went blank. So: drop the
+   * selection, let React unmount the popover, swap a tick later. Returns a cleanup for useEffect.
+   */
+  const withoutSelection = (swap: () => void) => {
+    const r = registry.current;
+    const sel = r?.select(blockEditorStore);
+    if (!sel || (!sel.getSelectedBlockClientId() && !sel.hasMultiSelection())) {
+      swap();
+      return undefined;
+    }
+    (document.querySelector<HTMLIFrameElement>('iframe[name="editor-canvas"]')?.contentDocument?.activeElement as HTMLElement | null)?.blur?.();
+    r.dispatch(blockEditorStore).clearSelectedBlock();
+    const t = window.setTimeout(swap, 30);
+    return () => window.clearTimeout(t);
+  };
+
   // Content changed from outside the editor (AI edit, undo, restyle, code editor, another page's header edit).
   useEffect(() => {
     const l = last.current;
     if (content === l.content && header === l.header && footer === l.footer) return;
-    last.current = { content, header, footer };
-    setBlocks(build(last.current));
+    const next = (last.current = { content, header, footer });
+    // Every block gets a new clientId: the selected one is gone.
+    return withoutSelection(() => setBlocks(build(next)));
   }, [content, header, footer]);
 
   useEffect(() => {
@@ -184,13 +207,22 @@ export function EditorProvider({ content, design, canUpload, info, blocks: custo
   };
 
   // A new assets object makes the canvas iframe reload its document (losing focus and keystrokes): keep it stable.
-  const resolvedAssets = useMemo(() => {
+  // Keyed on the CSS text, not the objects: a draft loaded from the server (every AI edit) has new
+  // objects with the same styles, and reloading the canvas for it loses scroll, focus and selection.
+  const assetsHtml = useMemo(() => {
     const fonts = googleFontsUrl(design);
     const styles = [componentsStyle, blockEditorContent, blockLibraryStyle, blockLibraryEditor, blockLibraryTheme, compileGlobalStyles(design, themeJson), compileBlockStyles(blockStyles), customBlocks.map((b) => sanitizeCss(b.css)).join('\n'), EDITOR_CANVAS_CSS]
       .map((css) => `<style>${css}</style>`)
       .join('');
-    return { styles: (fonts ? `<link rel="stylesheet" href="${fonts}">` : '') + styles, scripts: '' };
+    return (fonts ? `<link rel="stylesheet" href="${fonts}">` : '') + styles;
   }, [design, themeJson, customBlocks, blockStyles]);
+  const [canvasAssets, setCanvasAssets] = useState(assetsHtml);
+  // Styles really changed: the canvas reloads its document, so the selected block's element goes away too.
+  useEffect(() => {
+    if (assetsHtml === canvasAssets) return;
+    return withoutSelection(() => setCanvasAssets(assetsHtml));
+  }, [assetsHtml]);
+  const resolvedAssets = useMemo(() => ({ styles: canvasAssets, scripts: '' }), [canvasAssets]);
 
   const settings = useMemo(() => {
     const s = features(design, themeJson);
@@ -247,6 +279,7 @@ export function EditorProvider({ content, design, canUpload, info, blocks: custo
           }}
         >
           <BlockEditorKeyboardShortcuts.Register />
+          <GrabRegistry into={registry} />
           {canUpload && <MediaLocalizer customBlocks={customBlocks} />}
           {children}
           <Popover.Slot />
@@ -254,6 +287,12 @@ export function EditorProvider({ content, design, canUpload, info, blocks: custo
       </SlotFillProvider>
     </ShortcutProvider>
   );
+}
+
+/** Hands the block editor's registry to EditorProvider, which renders outside it. */
+function GrabRegistry({ into }: { into: { current: any } }) {
+  into.current = useRegistry();
+  return null;
 }
 
 async function mediaUpload({ filesList, onFileChange, onError }: { filesList: FileList | File[]; onFileChange(m: any[]): void; onError?(msg: string): void }) {

@@ -137,7 +137,8 @@ describe('AI connection depends on the runtime', () => {
     const d = mkdtempSync(join(tmpdir(), `prepress-${runtime}-`));
     const engine = {} as any; // only presence matters for the MCP switch
     const home = join(d, 'home');
-    const h = createHandler({ dataDir: join(d, 'My Site'), runtime, engine, homeDir: home, stdioCommand: { command: '/Applications/Prepress.app/Contents/MacOS/prepress', args: ['mcp', '--data', d] } });
+    const bin = '/Applications/Prepress.app/Contents/MacOS/prepress';
+    const h = createHandler({ dataDir: join(d, 'My Site'), runtime, engine, homeDir: home, stdioCommand: { command: bin, args: ['mcp', '--data', d] }, allSitesCommand: { command: bin, args: ['mcp', '--sites', d] } });
     const s = createServer((q, r) => void h(q, r));
     await new Promise<void>((r) => s.listen(0, '127.0.0.1', r));
     return { b: `http://127.0.0.1:${(s.address() as any).port}`, close: () => (s.close(), rmSync(d, { recursive: true, force: true })) };
@@ -163,6 +164,13 @@ describe('AI connection depends on the runtime', () => {
       expect((await post({ id: 'cursor', action: 'delete-everything' })).status).toBe(400);
       expect((await fetch(`${b}/api/mcp/clients`, { method: 'POST', headers: { origin: 'https://evil.example', 'content-type': 'application/json' }, body: '{"id":"cursor","action":"disconnect"}' })).status).toBe(403);
       expect((await (await post({ id: 'cursor', action: 'disconnect' })).json()).client.connected).toBe(false);
+      // The all-sites connection: one entry named "prepress", next to (not instead of) the site's own.
+      expect(info.all).toMatchObject({ name: 'prepress', stdio: { args: ['mcp', '--sites', expect.any(String)] } });
+      expect((await (await post({ id: 'cursor', action: 'connect', scope: 'all' })).json()).client.connected).toBe(true);
+      const after = await (await fetch(`${b}/api/mcp`)).json();
+      expect(after.all.clients.find((c: any) => c.id === 'cursor').connected).toBe(true);
+      expect(after.clients.find((c: any) => c.id === 'cursor').connected).toBe(false);
+      expect((await post({ id: 'cursor', action: 'connect', scope: 'everything' })).status).toBe(400);
     } finally {
       close();
     }
